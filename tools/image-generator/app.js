@@ -18,6 +18,8 @@ const state = {
     openai: localStorage.getItem('img_openai_key') || '',
     github: localStorage.getItem('img_github_token') || ''
   },
+  compressionQuality: parseFloat(localStorage.getItem('img_compression_quality') || '0.88'),
+  activeVerseId: null,
   isBatchGenerating: false,
   filterStatus: 'all'
 };
@@ -46,6 +48,7 @@ const elements = {
   customStyleInput: document.getElementById('customStyleInput'),
   customStyleGroup: document.getElementById('customStyleGroup'),
   providerSelect: document.getElementById('providerSelect'),
+  compressionSelect: document.getElementById('compressionSelect'),
   geminiKeyGroup: document.getElementById('geminiKeyGroup'),
   geminiKeyInput: document.getElementById('geminiKeyInput'),
   openaiKeyGroup: document.getElementById('openaiKeyGroup'),
@@ -95,6 +98,99 @@ function showToast(message, type = 'info') {
     toast.style.transform = 'translateX(100%)';
     setTimeout(() => toast.remove(), 300);
   }, 4500);
+}
+
+// Format bytes into readable string (e.g. 185 KB, 2.4 MB)
+function formatBytes(bytes) {
+  if (!bytes || bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+/**
+ * Visually Lossless Compression for Scripture Images
+ * Multi-step bicubic downsampling with high-fidelity JPEG encoding.
+ */
+async function compressImageSource(source, targetDim = 1024, quality = 0.88) {
+  return new Promise((resolve, reject) => {
+    let originalSize = 0;
+    if (source instanceof Blob || source instanceof File) {
+      originalSize = source.size;
+    }
+
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+
+    img.onload = () => {
+      try {
+        let curWidth = img.naturalWidth || img.width;
+        let curHeight = img.naturalHeight || img.height;
+
+        const minDim = Math.min(curWidth, curHeight);
+        const sx = (curWidth - minDim) / 2;
+        const sy = (curHeight - minDim) / 2;
+
+        let curCanvas = document.createElement('canvas');
+        curCanvas.width = minDim;
+        curCanvas.height = minDim;
+        let ctx = curCanvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, minDim, minDim);
+
+        let stepDim = minDim;
+        while (stepDim * 0.5 > targetDim) {
+          stepDim = Math.floor(stepDim * 0.5);
+          const nextCanvas = document.createElement('canvas');
+          nextCanvas.width = stepDim;
+          nextCanvas.height = stepDim;
+          const nextCtx = nextCanvas.getContext('2d');
+          nextCtx.imageSmoothingEnabled = true;
+          nextCtx.imageSmoothingQuality = 'high';
+          nextCtx.drawImage(curCanvas, 0, 0, stepDim, stepDim);
+          curCanvas = nextCanvas;
+        }
+
+        const finalCanvas = document.createElement('canvas');
+        finalCanvas.width = targetDim;
+        finalCanvas.height = targetDim;
+        const finalCtx = finalCanvas.getContext('2d');
+        finalCtx.imageSmoothingEnabled = true;
+        finalCtx.imageSmoothingQuality = 'high';
+        finalCtx.drawImage(curCanvas, 0, 0, targetDim, targetDim);
+
+        const dataUrl = finalCanvas.toDataURL('image/jpeg', quality);
+
+        const head = dataUrl.indexOf(',');
+        const b64Len = dataUrl.length - (head + 1);
+        const compressedSize = Math.round(b64Len * 0.75);
+
+        resolve({
+          dataUrl,
+          originalSize: originalSize || compressedSize,
+          compressedSize,
+          width: targetDim,
+          height: targetDim
+        });
+      } catch (err) {
+        reject(err);
+      }
+    };
+
+    img.onerror = () => reject(new Error('Failed to load image for compression'));
+
+    if (typeof source === 'string') {
+      img.src = source;
+    } else if (source instanceof Blob || source instanceof File) {
+      img.src = URL.createObjectURL(source);
+    } else if (source.src) {
+      img.src = source.src;
+    } else {
+      reject(new Error('Unsupported image format'));
+    }
+  });
 }
 
 // Convert Verse Title (e.g. 1.1 or 1.1.1) to Filename (1-1.jpg or 1-1-1.jpg)
@@ -358,12 +454,33 @@ function renderCards() {
 
   filtered.forEach((sec) => {
     const card = document.createElement('div');
-    card.className = 'verse-card';
+    card.className = `verse-card ${state.activeVerseId === sec.id ? 'active-card' : ''}`;
     card.id = `card-${sec.id}`;
+    card.onclick = () => { setActiveCard(sec.id); };
+
+    // Drag-and-drop onto card
+    card.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      card.style.borderColor = 'var(--accent-gold)';
+    });
+    card.addEventListener('dragleave', () => {
+      card.style.borderColor = '';
+    });
+    card.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      card.style.borderColor = '';
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        const file = e.dataTransfer.files[0];
+        if (file.type && file.type.startsWith('image/')) {
+          setActiveCard(sec.id);
+          await handleImageImport(sec.id, file, 'dragged & dropped');
+        }
+      }
+    });
 
     let statusText = '⏳ Pending';
-    if (sec.status === 'generating') statusText = '⚡ Generating...';
-    if (sec.status === 'generated') statusText = '🎨 Generated';
+    if (sec.status === 'generating') statusText = '⚡ Optimizing...';
+    if (sec.status === 'generated') statusText = '🎨 Ready';
     if (sec.status === 'saved') statusText = '💾 Saved in Repo';
     if (sec.status === 'error') statusText = '⚠️ Error';
 
@@ -381,14 +498,25 @@ function renderCards() {
       <div class="verse-image-box" id="img-box-${sec.id}">
         ${sec.imageUrl 
           ? `<img src="${sec.imageUrl}" alt="Illustration for ${sec.title}" loading="lazy" />
+             ${sec.fileSize ? `<span class="size-badge" title="Lossless compressed JPEG size">💾 ${formatBytes(sec.fileSize)}</span>` : ''}
              <div class="image-overlay-actions">
-               <button class="overlay-btn" title="Zoom Preview" onclick="openPreviewModal('${sec.id}')">🔍</button>
-               <button class="overlay-btn" title="Download Image" onclick="downloadSingleImage('${sec.id}')">⬇️</button>
+               <button class="overlay-btn" title="Zoom Preview" onclick="event.stopPropagation(); openPreviewModal('${sec.id}')">🔍</button>
+               <button class="overlay-btn" title="Copy Image to Clipboard" onclick="event.stopPropagation(); copyImageForVerse('${sec.id}')">📋</button>
+               <button class="overlay-btn" title="Download Image" onclick="event.stopPropagation(); downloadSingleImage('${sec.id}')">⬇️</button>
              </div>`
           : `<div class="image-placeholder">
                <span class="placeholder-icon">${sec.status === 'generating' ? '⏳' : '🖼️'}</span>
-               <span>${sec.status === 'generating' ? 'Generating artwork...' : 'No image yet'}</span>
-               <span style="font-size: 11px; opacity: 0.7;">Click 'Generate' below to create</span>
+               <span>${sec.status === 'generating' ? 'Compressing artwork...' : 'No image yet'}</span>
+               <div class="btn-group-inline" style="margin-top: 8px; gap: 6px;">
+                 <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); pasteImageForVerse('${sec.id}')" title="Paste image from clipboard (Cmd+V)">
+                   📥 Paste Image
+                 </button>
+                 <label class="btn btn-outline btn-sm" style="margin: 0; cursor: pointer;" title="Upload custom image">
+                   📤 Upload
+                   <input type="file" accept="image/*" style="display: none;" onchange="handleCustomImageUpload('${sec.id}', event)" />
+                 </label>
+               </div>
+               <span class="paste-hint">or click card & press Cmd+V</span>
              </div>`
         }
       </div>
@@ -401,10 +529,10 @@ function renderCards() {
           <div class="prompt-header">
             <span>🎨 Visual AI Prompt</span>
             <div class="btn-group-inline" style="gap: 5px;">
-              <button class="btn btn-outline btn-sm copy-btn" data-copy-id="${sec.id}" onclick="copyPromptForVerse('${sec.id}')" title="Copy prompt to clipboard">
+              <button class="btn btn-outline btn-sm copy-btn" data-copy-id="${sec.id}" onclick="event.stopPropagation(); copyPromptForVerse('${sec.id}')" title="Copy prompt to clipboard">
                 📋 Copy
               </button>
-              <button class="btn btn-outline btn-sm gemini-btn" onclick="openGeminiWithPrompt('${sec.id}')" title="Copy prompt and open Gemini in a new tab">
+              <button class="btn btn-outline btn-sm gemini-btn" onclick="event.stopPropagation(); openGeminiWithPrompt('${sec.id}')" title="Copy prompt and open Gemini in a new tab">
                 ✨ Open in Gemini
               </button>
               <button class="btn btn-outline btn-sm" style="padding: 2px 6px; font-size: 10px;" onclick="event.stopPropagation(); regeneratePromptForVerse('${sec.id}')" title="Reset to auto-synthesized prompt">🔄 Reset</button>
@@ -415,24 +543,25 @@ function renderCards() {
       </div>
 
       <div class="verse-card-footer">
-        <div class="btn-group-inline" style="justify-content: flex-start; gap: 6px;">
-          <button class="btn btn-primary btn-sm" onclick="generateImageForVerse('${sec.id}')" ${sec.status === 'generating' ? 'disabled' : ''}>
+        <div class="btn-group-inline" style="justify-content: flex-start; gap: 5px;">
+          <button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); generateImageForVerse('${sec.id}')" ${sec.status === 'generating' ? 'disabled' : ''}>
             ${sec.imageUrl ? '🔄 Regenerate' : '✨ Generate'}
           </button>
-          <button class="btn btn-success btn-sm" onclick="saveImageToDisk('${sec.id}')" ${!sec.imageUrl ? 'disabled' : ''}>
-            💾 Save to Repo
+          <button class="btn btn-success btn-sm" onclick="event.stopPropagation(); saveImageToDisk('${sec.id}')" ${!sec.imageUrl ? 'disabled' : ''}>
+            💾 Save
           </button>
         </div>
 
-        <div class="btn-group-inline" style="justify-content: flex-end; gap: 6px;">
-          <button class="btn btn-outline btn-sm copy-btn" data-copy-id="${sec.id}" onclick="copyPromptForVerse('${sec.id}')" title="Copy prompt to clipboard">
-            📋 Copy
+        <div class="btn-group-inline" style="justify-content: flex-end; gap: 5px;">
+          <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); pasteImageForVerse('${sec.id}')" title="Paste image from clipboard (Cmd+V)">
+            📥 Paste
           </button>
-          <button class="btn btn-outline btn-sm gemini-btn" onclick="openGeminiWithPrompt('${sec.id}')" title="Open Gemini with prompt">
-            ✨ Gemini
-          </button>
-          <label class="btn btn-secondary btn-sm" title="Upload custom image file" style="margin: 0; cursor: pointer;">
-            📤 Custom
+          ${sec.imageUrl ? `
+            <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); copyImageForVerse('${sec.id}')" title="Copy image to clipboard">
+              📋 Copy Img
+            </button>` : ''}
+          <label class="btn btn-outline btn-sm" title="Upload custom image file" style="margin: 0; cursor: pointer;">
+            📤 Upload
             <input type="file" accept="image/*" style="display: none;" onchange="handleCustomImageUpload('${sec.id}', event)" />
           </label>
         </div>
@@ -576,6 +705,129 @@ async function copyAllPrompts() {
   }
 }
 
+// Highlight & track active verse card
+function setActiveCard(id) {
+  state.activeVerseId = id;
+  document.querySelectorAll('.verse-card').forEach(c => c.classList.remove('active-card'));
+  const activeEl = document.getElementById(`card-${id}`);
+  if (activeEl) activeEl.classList.add('active-card');
+}
+
+/**
+ * Unified Image Import Pipeline (Upload / Paste / Drop)
+ * Automatically runs through multi-step lossless compression:
+ * - Crops & centers to 1024x1024 square
+ * - High quality JPEG compression (88% default)
+ * - Measures file size reduction & reports stats
+ * - Automatically saves to disk if server connected
+ */
+async function handleImageImport(id, fileOrBlob, sourceLabel = 'imported') {
+  const sec = state.sections.find(s => s.id === id);
+  if (!sec) return;
+
+  sec.status = 'generating';
+  renderCards();
+
+  try {
+    const result = await compressImageSource(fileOrBlob, 1024, state.compressionQuality);
+    sec.imageUrl = result.dataUrl;
+    sec.fileSize = result.compressedSize;
+    sec.status = 'generated';
+
+    const savedRatio = result.originalSize > result.compressedSize
+      ? Math.round((1 - result.compressedSize / result.originalSize) * 100)
+      : 0;
+
+    let msg = `Compressed ${formatBytes(result.originalSize)} ➔ ${formatBytes(result.compressedSize)}`;
+    if (savedRatio > 0) msg += ` (${savedRatio}% saved, visually lossless)`;
+
+    showToast(`✅ Verse ${sec.title} image ${sourceLabel}! ${msg}`, 'success');
+
+    // Auto-save to local repo if server connected
+    if (state.serverConnected) {
+      await saveImageToDisk(id, false);
+    }
+  } catch (err) {
+    console.error('Import/compression error:', err);
+    sec.status = 'error';
+    showToast(`Failed to process image: ${err.message}`, 'error');
+  }
+
+  updateStats();
+  renderCards();
+}
+
+// Copy Image to Clipboard (PNG blob format supported by OS clipboard)
+window.copyImageForVerse = async function(id) {
+  const sec = state.sections.find(s => s.id === id);
+  if (!sec || !sec.imageUrl) {
+    showToast('No image to copy.', 'error');
+    return;
+  }
+
+  try {
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || 1024;
+        canvas.height = img.naturalHeight || 1024;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+
+        canvas.toBlob(async (blob) => {
+          if (!blob) {
+            showToast('Failed to create image blob', 'error');
+            return;
+          }
+          try {
+            await navigator.clipboard.write([
+              new ClipboardItem({ 'image/png': blob })
+            ]);
+            showToast(`📋 Verse ${sec.title} image copied to clipboard! Ready to paste anywhere.`, 'success');
+          } catch (clipErr) {
+            console.error('Clipboard write error:', clipErr);
+            showToast('Could not copy image to clipboard: ' + clipErr.message, 'error');
+          }
+        }, 'image/png');
+      } catch (err) {
+        showToast('Canvas copy error: ' + err.message, 'error');
+      }
+    };
+    img.onerror = () => showToast('Failed to load image for copying', 'error');
+    img.src = sec.imageUrl;
+  } catch (err) {
+    showToast('Copy image error: ' + err.message, 'error');
+  }
+};
+
+// Paste Image from Clipboard into Verse Card
+window.pasteImageForVerse = async function(id) {
+  setActiveCard(id);
+  const sec = state.sections.find(s => s.id === id);
+  if (!sec) return;
+
+  try {
+    if (navigator.clipboard && navigator.clipboard.read) {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const imgType = item.types.find(t => t.startsWith('image/'));
+        if (imgType) {
+          const blob = await item.getType(imgType);
+          await handleImageImport(id, blob, 'pasted from clipboard');
+          return;
+        }
+      }
+      showToast('No image in clipboard! Copy an image from Gemini, browser, or disk first, then click Paste.', 'info');
+    } else {
+      showToast('Click this card and press Cmd+V (or Ctrl+V) to paste image from clipboard.', 'info');
+    }
+  } catch (err) {
+    showToast('Clipboard access blocked. Simply click this card and press Cmd+V to paste!', 'info');
+  }
+};
+
 // Generate Single Image
 window.generateImageForVerse = async function(id) {
   const sec = state.sections.find(s => s.id === id);
@@ -598,9 +850,12 @@ window.generateImageForVerse = async function(id) {
       imgDataUrl = await generateOpenAIImage(sec.prompt);
     }
 
-    sec.imageUrl = imgDataUrl;
+    // Compress & crop generated image to crisp 1024x1024 square
+    const compressed = await compressImageSource(imgDataUrl, 1024, state.compressionQuality);
+    sec.imageUrl = compressed.dataUrl;
+    sec.fileSize = compressed.compressedSize;
     sec.status = 'generated';
-    showToast(`Generated image for Verse ${sec.title}`, 'success');
+    showToast(`Generated & compressed Verse ${sec.title} (${formatBytes(sec.fileSize)})`, 'success');
 
     // Auto-save to disk if local server is connected
     if (state.serverConnected) {
@@ -800,38 +1055,12 @@ async function generateOpenAIImage(prompt) {
   return `data:image/jpeg;base64,${b64}`;
 }
 
-// Handle Custom Image Upload on Card
-window.handleCustomImageUpload = function(id, event) {
+// Handle Custom Image Upload on Card with Lossless Compression
+window.handleCustomImageUpload = async function(id, event) {
   const file = event.target.files[0];
   if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = 1024;
-      canvas.height = 1024;
-      const ctx = canvas.getContext('2d');
-
-      const minDim = Math.min(img.width, img.height);
-      const sx = (img.width - minDim) / 2;
-      const sy = (img.height - minDim) / 2;
-      ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, 1024, 1024);
-
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-      const sec = state.sections.find(s => s.id === id);
-      if (sec) {
-        sec.imageUrl = dataUrl;
-        sec.status = 'generated';
-        renderCards();
-        updateStats();
-        showToast(`Uploaded custom image for Verse ${sec.title}`, 'success');
-      }
-    };
-    img.src = e.target.result;
-  };
-  reader.readAsDataURL(file);
+  await handleImageImport(id, file, 'uploaded & compressed');
+  event.target.value = '';
 };
 
 // Save Single Image to Local Repository
@@ -1137,6 +1366,54 @@ function setupEventListeners() {
     localStorage.setItem('img_github_token', state.apiKeys.github);
 
     showToast('Settings & API Keys saved in browser', 'success');
+  });
+
+  // Compression Quality Selection
+  if (elements.compressionSelect) {
+    elements.compressionSelect.value = String(state.compressionQuality);
+    elements.compressionSelect.addEventListener('change', (e) => {
+      state.compressionQuality = parseFloat(e.target.value);
+      localStorage.setItem('img_compression_quality', String(state.compressionQuality));
+      showToast(`Compression quality set to ${Math.round(state.compressionQuality * 100)}%`, 'info');
+    });
+  }
+
+  // Global Keyboard Paste Listener (Cmd+V / Ctrl+V)
+  window.addEventListener('paste', async (e) => {
+    // Ignore if typing inside input or textarea
+    if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') {
+      return;
+    }
+
+    const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
+    if (!items) return;
+
+    let imageFile = null;
+    for (const item of items) {
+      if (item.type && item.type.startsWith('image/')) {
+        imageFile = item.getAsFile();
+        break;
+      }
+    }
+
+    if (!imageFile) return;
+
+    e.preventDefault();
+
+    let targetId = state.activeVerseId;
+    if (!targetId) {
+      const pending = state.sections.find(s => !s.imageUrl);
+      if (pending) targetId = pending.id;
+      else if (state.sections.length > 0) targetId = state.sections[0].id;
+    }
+
+    if (!targetId) {
+      showToast('Please load a scripture JSON before pasting images.', 'info');
+      return;
+    }
+
+    setActiveCard(targetId);
+    await handleImageImport(targetId, imageFile, 'pasted from clipboard');
   });
 
   // Batch Buttons

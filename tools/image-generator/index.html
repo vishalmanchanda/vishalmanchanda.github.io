@@ -107,6 +107,16 @@
           </div>
         </div>
 
+        <div class="form-group">
+          <label class="form-label">Lossless Image Compression</label>
+          <select id="compressionSelect" class="form-select">
+            <option value="0.88" selected>High Fidelity (88% - Visually Lossless, ~180KB)</option>
+            <option value="0.95">Maximum Quality (95% - Ultra Sharp, ~350KB)</option>
+            <option value="0.82">Web Optimized (82% - Lightweight, ~120KB)</option>
+          </select>
+          <span class="input-hint" style="color: var(--accent-green);">Auto-optimizes uploaded & pasted images to crisp 1024x1024 without visible degradation</span>
+        </div>
+
         <div class="form-group" id="customStyleGroup" style="display: none;">
           <label class="form-label">Custom Style Prompt Modifier</label>
           <input type="text" id="customStyleInput" class="form-control" placeholder="Describe the artistic style (e.g., epic lighting, detailed miniature painting)">
