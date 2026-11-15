@@ -4,13 +4,30 @@
  * local disk saving to assets/content/images/<folder>/<filename>.jpg, and GitHub API upload.
  */
 
+// Known Scripture folders present in the repository
+const KNOWN_REPOSITORY_FOLDERS = [
+  'katha-upanishad',
+  'shrimad-bhagwad-gita',
+  'shrimad-bhagwad-gita-visual',
+  'shrimad-bhagwatam-skanda-1',
+  'aitareya-upanishad',
+  'rag-guardrails-and-aiops'
+];
+
 // App State
 const state = {
   jsonData: null,
-  targetFolder: '',
+  targetFolder: 'katha-upanishad',
   sections: [],
   serverConnected: false,
-  existingFolders: [],
+  existingFolders: [...KNOWN_REPOSITORY_FOLDERS],
+  foldersDetails: KNOWN_REPOSITORY_FOLDERS.map(name => ({
+    name: name,
+    imageCount: 0,
+    sampleImages: [],
+    uncommittedCount: 0
+  })),
+  folderSearchQuery: '',
   activeProvider: 'pollinations', // 'pollinations' | 'puter' | 'gemini' | 'openai'
   selectedStyle: 'vedic-oil',
   apiKeys: {
@@ -43,6 +60,21 @@ const elements = {
   pasteJsonBtn: document.getElementById('pasteJsonBtn'),
   targetFolderInput: document.getElementById('targetFolderInput'),
   folderSelect: document.getElementById('folderSelect'),
+  openFolderDrawerBtn: document.getElementById('openFolderDrawerBtn'),
+  selectedFolderNameDisplay: document.getElementById('selectedFolderNameDisplay'),
+  selectedFolderBadge: document.getElementById('selectedFolderBadge'),
+  manualFolderToggle: document.getElementById('manualFolderToggle'),
+  manualFolderInputGroup: document.getElementById('manualFolderInputGroup'),
+  applyManualFolderBtn: document.getElementById('applyManualFolderBtn'),
+  folderDrawer: document.getElementById('folderDrawer'),
+  folderDrawerClose: document.getElementById('folderDrawerClose'),
+  folderSearchInput: document.getElementById('folderSearchInput'),
+  folderSearchClear: document.getElementById('folderSearchClear'),
+  newFolderNameInput: document.getElementById('newFolderNameInput'),
+  createNewFolderBtn: document.getElementById('createNewFolderBtn'),
+  folderCountDisplay: document.getElementById('folderCountDisplay'),
+  refreshFoldersListBtn: document.getElementById('refreshFoldersListBtn'),
+  drawerFolderList: document.getElementById('drawerFolderList'),
   targetPathDisplay: document.getElementById('targetPathDisplay'),
   artStyleSelect: document.getElementById('artStyleSelect'),
   customStyleInput: document.getElementById('customStyleInput'),
@@ -318,8 +350,9 @@ async function loadSubfolderImages(folderName, forceRefresh = false) {
   if (!safeFolder) return;
 
   state.targetFolder = safeFolder;
-  elements.targetFolderInput.value = safeFolder;
-  elements.targetPathDisplay.textContent = `assets/content/images/${safeFolder}/`;
+  if (elements.targetFolderInput) elements.targetFolderInput.value = safeFolder;
+  if (elements.targetPathDisplay) elements.targetPathDisplay.textContent = `assets/content/images/${safeFolder}/`;
+  updateFolderPickerUI();
 
   if (!state.serverConnected) {
     showToast('Local server not connected. Connect server to view local repository images.', 'info');
@@ -372,6 +405,15 @@ async function loadSubfolderImages(folderName, forceRefresh = false) {
     const committedCount = data.committedCount || (imageList.length - uncommittedCount);
     state.uncommittedCount = uncommittedCount;
     state.committedCount = committedCount;
+
+    // Keep folder details in sync
+    const matchedFolder = (state.foldersDetails || []).find(f => f.name.toLowerCase() === safeFolder.toLowerCase());
+    if (matchedFolder) {
+      matchedFolder.imageCount = imageList.length;
+      matchedFolder.uncommittedCount = uncommittedCount;
+      matchedFolder.sampleImages = imageList.map(img => img.filename).slice(0, 4);
+    }
+    updateFolderPickerUI();
 
     const uncommittedDesc = uncommittedCount > 0 
       ? ` • ⚡ ${uncommittedCount} uncommitted on disk` 
@@ -590,6 +632,373 @@ function synthesizePrompt(section, chapterDesc, chapterTitle, styleKey) {
   return `${scene} ${styleDescription}`;
 }
 
+// Format folder slug into readable title (e.g. "katha-upanishad" -> "Katha Upanishad")
+function formatFolderDisplayName(folder) {
+  if (!folder) return 'Select Subfolder';
+  return folder.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+// Guarantee state.foldersDetails has rich objects for all available folders
+function ensureFoldersDetails(foldersList = []) {
+  const listFromArgs = Array.isArray(foldersList) && foldersList.length > 0 ? foldersList : [];
+  const listFromState = Array.isArray(state.existingFolders) && state.existingFolders.length > 0 ? state.existingFolders : [];
+
+  // Combine unique folder names from all sources
+  const combinedNames = Array.from(new Set([
+    ...listFromArgs,
+    ...listFromState,
+    ...(state.targetFolder ? [state.targetFolder] : []),
+    ...KNOWN_REPOSITORY_FOLDERS
+  ])).filter(name => typeof name === 'string' && name.trim().length > 0);
+
+  state.existingFolders = combinedNames;
+
+  // Preserve existing detailed counts and sample images if already fetched
+  const detailMap = new Map();
+  (state.foldersDetails || []).forEach(f => {
+    if (f && f.name) detailMap.set(f.name.toLowerCase(), f);
+  });
+
+  state.foldersDetails = combinedNames.map(name => {
+    const existing = detailMap.get(name.toLowerCase());
+    if (existing) {
+      return existing;
+    }
+    return {
+      name: name,
+      imageCount: 0,
+      sampleImages: [],
+      uncommittedCount: 0
+    };
+  });
+
+  return state.foldersDetails;
+}
+
+// Asynchronously fetches counts and sample thumbnails for folders from local disk
+async function enrichFolderDetailsAsync() {
+  if (!state.serverConnected) return;
+
+  const targets = (state.foldersDetails || []).filter(f => !f.sampleImages || f.sampleImages.length === 0);
+  if (targets.length === 0) return;
+
+  for (const f of targets) {
+    try {
+      const res = await fetch(`/api/folder-images?folder=${encodeURIComponent(f.name)}&_t=${Date.now()}`);
+      if (res.ok) {
+        const data = await res.json();
+        const images = data.images || [];
+        f.imageCount = images.length;
+        f.sampleImages = images.map(img => img.filename).slice(0, 4);
+        f.uncommittedCount = data.uncommittedCount || 0;
+      }
+    } catch (e) {
+      // silently ignore individual errors
+    }
+  }
+
+  updateFolderPickerUI();
+  if (elements.folderDrawer && elements.folderDrawer.classList.contains('active')) {
+    renderDrawerFolders();
+  }
+}
+
+// Update Folder Picker UI in Step 2 Destination panel
+function updateFolderPickerUI() {
+  const current = state.targetFolder || (elements.targetFolderInput ? elements.targetFolderInput.value.trim() : '') || 'katha-upanishad';
+  state.targetFolder = current;
+  if (elements.targetFolderInput) elements.targetFolderInput.value = current;
+  if (elements.targetPathDisplay) elements.targetPathDisplay.textContent = `assets/content/images/${current}/`;
+  if (elements.selectedFolderNameDisplay) elements.selectedFolderNameDisplay.textContent = formatFolderDisplayName(current);
+
+  const matched = (state.foldersDetails || []).find(f => f.name.toLowerCase() === current.toLowerCase());
+  if (elements.selectedFolderBadge) {
+    if (matched && matched.imageCount > 0) {
+      const uncommitted = matched.uncommittedCount ? ` • ⚡ ${matched.uncommittedCount}` : '';
+      elements.selectedFolderBadge.textContent = `${matched.imageCount} image${matched.imageCount === 1 ? '' : 's'}${uncommitted}`;
+    } else if (state.serverConnected) {
+      elements.selectedFolderBadge.textContent = 'Active Subfolder';
+    } else {
+      elements.selectedFolderBadge.textContent = 'assets/content/images/';
+    }
+  }
+
+  // Also sync legacy select dropdown if present
+  if (elements.folderSelect) {
+    elements.folderSelect.innerHTML = '<option value="">-- Choose existing folder or enter new --</option>';
+    state.existingFolders.forEach(folder => {
+      const opt = document.createElement('option');
+      opt.value = folder;
+      opt.textContent = folder;
+      if (folder === current) opt.selected = true;
+      elements.folderSelect.appendChild(opt);
+    });
+  }
+}
+
+// Legacy alias to preserve backward compatibility
+function updateFolderDropdown() {
+  updateFolderPickerUI();
+}
+
+// Fetch detailed list of subfolders from server
+async function fetchFoldersList(forceRender = false) {
+  if (!state.serverConnected) {
+    ensureFoldersDetails();
+    if (forceRender) renderDrawerFolders();
+    return state.foldersDetails;
+  }
+
+  try {
+    const res = await fetch(`/api/folders?_t=${Date.now()}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.foldersDetails) && data.foldersDetails.length > 0) {
+        state.existingFolders = data.folders || data.foldersDetails.map(f => f.name);
+        state.foldersDetails = data.foldersDetails;
+      } else if (Array.isArray(data.folders) && data.folders.length > 0) {
+        ensureFoldersDetails(data.folders);
+        enrichFolderDetailsAsync();
+      }
+    } else {
+      // 404 or older server fallback: enrich via /api/folder-images
+      ensureFoldersDetails();
+      enrichFolderDetailsAsync();
+    }
+  } catch (err) {
+    console.warn('Failed to fetch /api/folders, using fallback:', err);
+    ensureFoldersDetails();
+    enrichFolderDetailsAsync();
+  }
+
+  updateFolderPickerUI();
+  if (forceRender || (elements.folderDrawer && elements.folderDrawer.classList.contains('active'))) {
+    renderDrawerFolders();
+  }
+  return state.foldersDetails;
+}
+
+// Open slide-over folder drawer
+async function openFolderDrawer() {
+  if (!elements.folderDrawer) return;
+  elements.folderDrawer.classList.add('active');
+  document.body.style.overflow = 'hidden';
+
+  // Ensure folders are guaranteed to be present and rendered immediately
+  ensureFoldersDetails();
+  renderDrawerFolders();
+
+  if (elements.folderSearchInput) {
+    elements.folderSearchInput.value = state.folderSearchQuery || '';
+    if (elements.folderSearchClear) {
+      elements.folderSearchClear.style.display = elements.folderSearchInput.value ? 'block' : 'none';
+    }
+    setTimeout(() => elements.folderSearchInput.focus(), 80);
+  }
+
+  // Refresh fresh counts and uncommitted flags in the background
+  if (state.serverConnected) {
+    fetchFoldersList(true);
+  }
+}
+
+// Close slide-over folder drawer
+function closeFolderDrawer() {
+  if (!elements.folderDrawer) return;
+  elements.folderDrawer.classList.remove('active');
+  document.body.style.overflow = '';
+}
+
+// Render searchable folder cards in drawer
+function renderDrawerFolders() {
+  if (!elements.drawerFolderList) return;
+
+  // Guarantee foldersDetails is never empty
+  if (!state.foldersDetails || state.foldersDetails.length === 0) {
+    ensureFoldersDetails();
+  }
+
+  const query = (state.folderSearchQuery || '').trim().toLowerCase();
+  const allFolders = state.foldersDetails || [];
+
+  const filtered = allFolders.filter(f => {
+    if (!query) return true;
+    const nameMatch = (f.name || '').toLowerCase().includes(query);
+    const titleMatch = formatFolderDisplayName(f.name || '').toLowerCase().includes(query);
+    const spaceMatch = (f.name || '').replace(/[-_]/g, ' ').toLowerCase().includes(query);
+    return nameMatch || titleMatch || spaceMatch;
+  });
+
+  // Update count indicator
+  if (elements.folderCountDisplay) {
+    if (query) {
+      elements.folderCountDisplay.textContent = `Showing ${filtered.length} of ${allFolders.length} folders`;
+    } else {
+      elements.folderCountDisplay.textContent = `${allFolders.length} folders available`;
+    }
+  }
+
+  if (filtered.length === 0) {
+    const safeQ = escapeHtml(query);
+    elements.drawerFolderList.innerHTML = `
+      <div class="drawer-empty-state">
+        <span style="font-size: 32px;">🔍</span>
+        <div style="font-weight: 600; color: var(--text-primary); font-size: 14px;">No matching folders found</div>
+        <div style="font-size: 12px; color: var(--text-muted); text-align: center;">No folder matching "<code>${safeQ}</code>" exists in <code>assets/content/images/</code>.</div>
+        ${query ? `
+          <button type="button" class="btn btn-primary btn-sm" id="emptyStateCreateBtn" style="margin-top: 8px;">
+            <span>➕</span> Create folder "${safeQ}"
+          </button>
+        ` : ''}
+      </div>
+    `;
+
+    const emptyBtn = document.getElementById('emptyStateCreateBtn');
+    if (emptyBtn) {
+      emptyBtn.addEventListener('click', () => {
+        if (elements.newFolderNameInput) {
+          elements.newFolderNameInput.value = query;
+          createNewFolderFromDrawer();
+        }
+      });
+    }
+    return;
+  }
+
+  let html = '';
+  filtered.forEach(f => {
+    const isCurrent = state.targetFolder && state.targetFolder.toLowerCase() === f.name.toLowerCase();
+    const displayName = formatFolderDisplayName(f.name);
+    const uncommittedBadge = f.uncommittedCount > 0 
+      ? `<span class="drawer-uncommitted-badge" title="${f.uncommittedCount} uncommitted or modified files on disk">⚡ ${f.uncommittedCount} uncommitted</span>` 
+      : '';
+    const activeBadge = isCurrent 
+      ? `<span class="drawer-active-tag">✓ Current</span>` 
+      : '';
+
+    let thumbsHtml = '';
+    if (f.sampleImages && f.sampleImages.length > 0) {
+      const thumbs = f.sampleImages.map(img => 
+        `<img src="/assets/content/images/${encodeURIComponent(f.name)}/${encodeURIComponent(img)}" class="drawer-thumb-chip" alt="${escapeHtml(img)}" loading="lazy" onerror="this.style.display='none'" />`
+      ).join('');
+      const moreCount = f.imageCount > f.sampleImages.length ? f.imageCount - f.sampleImages.length : 0;
+      const moreBadge = moreCount > 0 ? `<span class="drawer-more-thumbs">+${moreCount} more</span>` : '';
+      thumbsHtml = `<div class="drawer-folder-thumbs">${thumbs}${moreBadge}</div>`;
+    }
+
+    html += `
+      <div class="drawer-folder-card ${isCurrent ? 'active' : ''}" data-folder="${escapeHtml(f.name)}" role="button" tabindex="0">
+        <div class="drawer-folder-top">
+          <div class="drawer-folder-identity">
+            <span class="drawer-folder-icon">📂</span>
+            <div class="drawer-folder-titles">
+              <span class="drawer-folder-name">${escapeHtml(displayName)}</span>
+              <span class="drawer-folder-slug">assets/content/images/${escapeHtml(f.name)}/</span>
+            </div>
+          </div>
+          <div class="drawer-folder-badges">
+            ${activeBadge}
+            ${uncommittedBadge}
+            <span class="drawer-count-badge">${f.imageCount || 0} image${f.imageCount === 1 ? '' : 's'}</span>
+          </div>
+        </div>
+        ${thumbsHtml}
+      </div>
+    `;
+  });
+
+  elements.drawerFolderList.innerHTML = html;
+
+  // Attach card selection listeners
+  const cards = elements.drawerFolderList.querySelectorAll('.drawer-folder-card');
+  cards.forEach(card => {
+    const folderName = card.getAttribute('data-folder');
+    card.addEventListener('click', () => {
+      selectFolderFromDrawer(folderName);
+    });
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        selectFolderFromDrawer(folderName);
+      }
+    });
+  });
+}
+
+// Select folder from drawer and load images
+async function selectFolderFromDrawer(folderName) {
+  if (!folderName) return;
+  const clean = folderName.replace(/[^a-zA-Z0-9_-]/g, '').trim();
+  if (!clean) return;
+
+  state.targetFolder = clean;
+  updateFolderPickerUI();
+  closeFolderDrawer();
+  await loadSubfolderImages(clean, true);
+  showToast(`📁 Target folder set to "${clean}"`, 'success');
+}
+
+// Create new subfolder from drawer input
+async function createNewFolderFromDrawer() {
+  const input = elements.newFolderNameInput;
+  if (!input) return;
+  const raw = input.value.trim();
+  if (!raw) {
+    showToast('Please enter a folder name', 'error');
+    input.focus();
+    return;
+  }
+
+  const clean = raw.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9_-]/g, '').trim();
+  if (!clean) {
+    showToast('Invalid folder name. Use letters, numbers, hyphens or underscores.', 'error');
+    input.focus();
+    return;
+  }
+
+  if (state.serverConnected) {
+    try {
+      const res = await fetch('/api/create-folder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder: clean })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Failed to create folder on disk', 'error');
+        return;
+      }
+      if (data.alreadyExisted) {
+        showToast(`Folder "${clean}" already exists. Selecting it.`, 'info');
+      } else {
+        showToast(`✨ Created new folder "assets/content/images/${clean}/"`, 'success');
+      }
+    } catch (err) {
+      console.warn('Folder creation error:', err);
+      showToast('Error creating folder: ' + err.message, 'error');
+      return;
+    }
+  }
+
+  // Update client state
+  if (!state.existingFolders.includes(clean)) {
+    state.existingFolders.push(clean);
+  }
+  let existingObj = state.foldersDetails.find(f => f.name.toLowerCase() === clean);
+  if (!existingObj) {
+    existingObj = {
+      name: clean,
+      imageCount: 0,
+      sampleImages: [],
+      uncommittedCount: 0
+    };
+    state.foldersDetails.unshift(existingObj);
+  }
+
+  input.value = '';
+  await selectFolderFromDrawer(clean);
+}
+
 // Check Backend Server Connection
 async function checkServerStatus() {
   try {
@@ -597,38 +1006,40 @@ async function checkServerStatus() {
     if (res.ok) {
       const data = await res.json();
       state.serverConnected = true;
-      state.existingFolders = data.existingFolders || [];
+
+      if (Array.isArray(data.foldersDetails) && data.foldersDetails.length > 0) {
+        state.foldersDetails = data.foldersDetails;
+        state.existingFolders = data.foldersDetails.map(f => f.name);
+      } else {
+        const rawFolders = data.existingFolders || [];
+        ensureFoldersDetails(rawFolders);
+        // Enrich image counts and thumbnails asynchronously
+        enrichFolderDetailsAsync();
+      }
+
       elements.serverBadge.className = 'server-badge';
       elements.serverStatusText.textContent = `Local Server Connected (${data.gitBranch || 'master'})`;
-      updateFolderDropdown();
+      updateFolderPickerUI();
+      renderDrawerFolders();
 
       // Auto-load images from initial target folder if no JSON is active
       if (!state.jsonData) {
-        const initialFolder = elements.targetFolderInput.value.trim() || (state.existingFolders[0] || 'katha-upanishad');
-        loadSubfolderImages(initialFolder);
+        const initialFolder = elements.targetFolderInput ? elements.targetFolderInput.value.trim() : (state.existingFolders[0] || 'katha-upanishad');
+        loadSubfolderImages(initialFolder || 'katha-upanishad');
       }
       return true;
     }
-  } catch (e) {}
+  } catch (e) {
+    console.warn('Status check note:', e);
+  }
 
   state.serverConnected = false;
   elements.serverBadge.className = 'server-badge disconnected';
   elements.serverStatusText.textContent = 'Standalone Mode (Client-side / GitHub API)';
+  ensureFoldersDetails();
+  updateFolderPickerUI();
+  renderDrawerFolders();
   return false;
-}
-
-// Update Folder Dropdown
-function updateFolderDropdown() {
-  const select = elements.folderSelect;
-  const currentVal = elements.targetFolderInput.value.trim();
-  select.innerHTML = '<option value="">-- Choose existing folder or enter new --</option>';
-  state.existingFolders.forEach(folder => {
-    const opt = document.createElement('option');
-    opt.value = folder;
-    opt.textContent = folder;
-    if (folder === currentVal) opt.selected = true;
-    select.appendChild(opt);
-  });
 }
 
 // Process Uploaded / Provided JSON
@@ -639,8 +1050,9 @@ function loadParsedJson(json) {
     // Auto-detect target folder from contentId
     let detectedFolder = json.contentId || 'scripture-images';
     state.targetFolder = detectedFolder;
-    elements.targetFolderInput.value = detectedFolder;
-    elements.targetPathDisplay.textContent = `assets/content/images/${detectedFolder}/`;
+    if (elements.targetFolderInput) elements.targetFolderInput.value = detectedFolder;
+    if (elements.targetPathDisplay) elements.targetPathDisplay.textContent = `assets/content/images/${detectedFolder}/`;
+    updateFolderPickerUI();
 
     // Process Sections
     const rawSections = json.sections || [];
@@ -1714,21 +2126,145 @@ function setupEventListeners() {
     elements.previewModal.classList.remove('active');
   });
 
-  // Target Folder Change
-  elements.targetFolderInput.addEventListener('change', (e) => {
-    handleTargetFolderChange(e.target.value);
-  });
+  // Open Folder Drawer Button & Keyboard Accessibility
+  if (elements.openFolderDrawerBtn) {
+    elements.openFolderDrawerBtn.addEventListener('click', openFolderDrawer);
+    elements.openFolderDrawerBtn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openFolderDrawer();
+      }
+    });
+  }
 
-  elements.targetFolderInput.addEventListener('input', (e) => {
-    state.targetFolder = e.target.value.trim();
-    elements.targetPathDisplay.textContent = `assets/content/images/${state.targetFolder}/`;
-  });
+  // Close Folder Drawer Button
+  if (elements.folderDrawerClose) {
+    elements.folderDrawerClose.addEventListener('click', closeFolderDrawer);
+  }
 
-  elements.folderSelect.addEventListener('change', (e) => {
-    if (e.target.value) {
-      handleTargetFolderChange(e.target.value);
+  // Click on backdrop to close
+  if (elements.folderDrawer) {
+    elements.folderDrawer.addEventListener('click', (e) => {
+      if (e.target === elements.folderDrawer) {
+        closeFolderDrawer();
+      }
+    });
+  }
+
+  // Global Escape key closes drawer
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && elements.folderDrawer && elements.folderDrawer.classList.contains('active')) {
+      closeFolderDrawer();
     }
   });
+
+  // Drawer Search Input & Clear
+  if (elements.folderSearchInput) {
+    elements.folderSearchInput.addEventListener('input', (e) => {
+      state.folderSearchQuery = e.target.value;
+      if (elements.folderSearchClear) {
+        elements.folderSearchClear.style.display = e.target.value ? 'block' : 'none';
+      }
+      renderDrawerFolders();
+    });
+  }
+
+  if (elements.folderSearchClear) {
+    elements.folderSearchClear.addEventListener('click', () => {
+      if (elements.folderSearchInput) {
+        elements.folderSearchInput.value = '';
+        elements.folderSearchInput.focus();
+      }
+      state.folderSearchQuery = '';
+      elements.folderSearchClear.style.display = 'none';
+      renderDrawerFolders();
+    });
+  }
+
+  // Create New Folder from Drawer
+  if (elements.createNewFolderBtn) {
+    elements.createNewFolderBtn.addEventListener('click', createNewFolderFromDrawer);
+  }
+
+  if (elements.newFolderNameInput) {
+    elements.newFolderNameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        createNewFolderFromDrawer();
+      }
+    });
+  }
+
+  // Rescan / Refresh Folders List in Drawer
+  if (elements.refreshFoldersListBtn) {
+    elements.refreshFoldersListBtn.addEventListener('click', async () => {
+      elements.refreshFoldersListBtn.innerHTML = '<span>⏳</span> Scanning...';
+      await fetchFoldersList(true);
+      elements.refreshFoldersListBtn.innerHTML = '<span>🔄</span> Rescan';
+      showToast('Folders list refreshed from disk', 'info');
+    });
+  }
+
+  // Manual Folder Path Edit Toggle
+  if (elements.manualFolderToggle && elements.manualFolderInputGroup) {
+    elements.manualFolderToggle.addEventListener('click', () => {
+      const isHidden = elements.manualFolderInputGroup.style.display === 'none';
+      elements.manualFolderInputGroup.style.display = isHidden ? 'flex' : 'none';
+      if (isHidden && elements.targetFolderInput) {
+        elements.targetFolderInput.focus();
+        elements.targetFolderInput.select();
+      }
+    });
+  }
+
+  if (elements.applyManualFolderBtn) {
+    elements.applyManualFolderBtn.addEventListener('click', () => {
+      const val = elements.targetFolderInput ? elements.targetFolderInput.value.trim() : '';
+      if (val) {
+        selectFolderFromDrawer(val);
+        if (elements.manualFolderInputGroup) {
+          elements.manualFolderInputGroup.style.display = 'none';
+        }
+      }
+    });
+  }
+
+  // Target Folder Manual Input
+  if (elements.targetFolderInput) {
+    elements.targetFolderInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const val = elements.targetFolderInput.value.trim();
+        if (val) {
+          selectFolderFromDrawer(val);
+          if (elements.manualFolderInputGroup) {
+            elements.manualFolderInputGroup.style.display = 'none';
+          }
+        }
+      }
+    });
+
+    elements.targetFolderInput.addEventListener('change', (e) => {
+      handleTargetFolderChange(e.target.value);
+    });
+
+    elements.targetFolderInput.addEventListener('input', (e) => {
+      state.targetFolder = e.target.value.trim();
+      elements.targetPathDisplay.textContent = `assets/content/images/${state.targetFolder}/`;
+      if (elements.selectedFolderNameDisplay) {
+        elements.selectedFolderNameDisplay.textContent = formatFolderDisplayName(state.targetFolder);
+      }
+    });
+  }
+
+  // Fallback support if legacy folderSelect exists
+  if (elements.folderSelect) {
+    elements.folderSelect.addEventListener('change', (e) => {
+      if (e.target.value) {
+        handleTargetFolderChange(e.target.value);
+      }
+    });
+  }
 
   // Provider selection
   elements.providerSelect.addEventListener('change', (e) => {
@@ -2446,6 +2982,11 @@ document.addEventListener('DOMContentLoaded', () => {
   if (state.apiKeys.gemini) elements.geminiKeyInput.value = state.apiKeys.gemini;
   if (state.apiKeys.openai) elements.openaiKeyInput.value = state.apiKeys.openai;
   if (state.apiKeys.github) elements.githubTokenInput.value = state.apiKeys.github;
+
+  // Pre-render drawer folders immediately with repository folders so they are available right away
+  ensureFoldersDetails();
+  updateFolderPickerUI();
+  renderDrawerFolders();
 
   checkServerStatus();
 });

@@ -32,8 +32,20 @@ Then open your browser at:
 
 ## 📋 Features
 
-### 1. Dynamic Subfolder Browsing & Local Repo Images (Including Uncommitted Files)
-- **Direct Local Disk Scanning**: Choose any subfolder and click **`📂 View Local Images`** (in Step 2), **`📂 Local Repo Images`** (in Step 1), or **`🔄 Sync Local Images`** (in the toolbar).
+### 1. Searchable Slide-over Folder Drawer & Local Repo Images
+- **Visual Folder Picker Bar**: Replaces static dropdowns with an interactive, stylish destination bar in Step 2 displaying the active folder's formatted title, disk path (`assets/content/images/<folder>/`), and total image count with uncommitted badges.
+- **Searchable Slide-over Drawer (`#folderDrawer`)**:
+  - Click the folder picker bar or **`🔍 Browse Folders`** to slide in a modern, semi-transparent backdrop blurred drawer from the right.
+  - **Instant Real-Time Search**: Search through available scripture folders by name or keywords (e.g. `katha`, `gita`, `skanda`, `aitareya`).
+  - **Folder Cards with Mini-Thumbnails**: Each folder card displays:
+    - Formatted title and full disk slug.
+    - Status badges: `✓ Current` active indicator, total image count badge, and `⚡ X uncommitted` badge if local edits exist.
+    - **Visual Image Chips**: Mini 38×38 preview thumbnails showing the first 4 images inside that folder, plus a `+N more` counter.
+  - **Inline Folder Creation**: Quickly create a new destination subfolder directly inside the drawer with **`➕ Create & Select`**.
+  - **1-Click Search-to-Create**: If a search query yields no matches, a 1-click button allows creating that folder immediately.
+  - **Drawer Actions**: Rescan disk folders at any time with **`🔄 Rescan`**, close with **`✕`**, backdrop click, or **`Esc`** key.
+  - **Manual Path Override**: Click **`✏️ Edit Path`** in Step 2 to toggle a collapsible text input for custom typing.
+- **Direct Local Disk Scanning**: Choose any subfolder and view local disk images instantly.
 - **See Uncommitted Files Instantly**: Scans files directly on the local filesystem in `assets/content/images/<folder>/`—even if they are **uncommitted, newly created, untracked, or modified** in git.
 - **Git Status Indicators**:
   - `⚡ Uncommitted (Disk)`: Highlighted with an orange badge indicating the file has local uncommitted changes.

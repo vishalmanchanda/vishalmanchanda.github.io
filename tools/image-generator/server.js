@@ -60,15 +60,39 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // API Status
-  if (req.method === 'GET' && pathname === '/api/status') {
-    let folders = [];
+  // API Status & Folders Detail
+  if (req.method === 'GET' && (pathname === '/api/status' || pathname === '/api/folders')) {
+    const foldersDetails = [];
     if (fs.existsSync(IMAGES_BASE)) {
-      folders = fs.readdirSync(IMAGES_BASE, { withFileTypes: true })
+      const dirs = fs.readdirSync(IMAGES_BASE, { withFileTypes: true })
         .filter(d => d.isDirectory() && !d.name.startsWith('.'))
-        .map(d => d.name)
-        .sort();
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      for (const d of dirs) {
+        const dirPath = path.join(IMAGES_BASE, d.name);
+        const files = fs.readdirSync(dirPath, { withFileTypes: true });
+        const imgFiles = files
+          .filter(f => f.isFile() && /\.(jpg|jpeg|png|webp)$/i.test(f.name))
+          .map(f => f.name)
+          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+
+        let uncommitted = 0;
+        try {
+          const relDir = path.join('assets/content/images', d.name);
+          const out = execSync(`git status --porcelain "${relDir}"`, { cwd: BASE_DIR }).toString();
+          uncommitted = out.split('\n').filter(l => l.trim().length >= 4).length;
+        } catch (e) {}
+
+        foldersDetails.push({
+          name: d.name,
+          imageCount: imgFiles.length,
+          sampleImages: imgFiles.slice(0, 4),
+          uncommittedCount: uncommitted
+        });
+      }
     }
+
+    const folders = foldersDetails.map(f => f.name);
     let gitBranch = 'unknown';
     try {
       gitBranch = execSync('git branch --show-current', { cwd: BASE_DIR }).toString().trim();
@@ -79,6 +103,7 @@ const server = http.createServer((req, res) => {
       repoRoot: BASE_DIR,
       imagesBase: IMAGES_BASE,
       existingFolders: folders,
+      foldersDetails,
       gitBranch
     });
     return;
@@ -279,6 +304,16 @@ const server = http.createServer((req, res) => {
         } else {
           return sendJson(res, { success: false, message: 'File not found' }, 404);
         }
+      }
+
+      if (pathname === '/api/create-folder') {
+        const safeFolder = (data.folder || '').replace(/[^a-zA-Z0-9_-]/g, '');
+        if (!safeFolder) return sendJson(res, { error: 'Invalid folder name' }, 400);
+        const targetDir = path.join(IMAGES_BASE, safeFolder);
+        if (!fs.existsSync(targetDir)) {
+          fs.mkdirSync(targetDir, { recursive: true });
+        }
+        return sendJson(res, { success: true, folder: safeFolder });
       }
 
       if (pathname === '/api/git-commit') {

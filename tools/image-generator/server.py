@@ -53,11 +53,31 @@ class ImageStudioHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             return
 
-        if path == "/api/status":
-            folders = []
-            if IMAGES_BASE.exists():
-                folders = [d.name for d in IMAGES_BASE.iterdir() if d.is_dir() and not d.name.startswith(".")]
-                folders.sort()
+        if path == "/api/status" or path == "/api/folders":
+            folders_details = []
+            if IMAGES_BASE.exists() and IMAGES_BASE.is_dir():
+                for d in sorted(IMAGES_BASE.iterdir()):
+                    if d.is_dir() and not d.name.startswith("."):
+                        images = [f.name for f in d.iterdir() if f.is_file() and f.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")]
+                        images.sort(key=lambda x: [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', x)])
+                        
+                        uncommitted = 0
+                        try:
+                            rel_dir = f"assets/content/images/{d.name}"
+                            git_res = subprocess.run(["git", "status", "--porcelain", rel_dir], capture_output=True, text=True, cwd=str(BASE_DIR))
+                            if git_res.returncode == 0:
+                                uncommitted = len([l for l in git_res.stdout.splitlines() if len(l.strip()) >= 4])
+                        except Exception:
+                            pass
+
+                        folders_details.append({
+                            "name": d.name,
+                            "imageCount": len(images),
+                            "sampleImages": images[:4],
+                            "uncommittedCount": uncommitted
+                        })
+
+            folders = [f["name"] for f in folders_details]
 
             git_branch = "unknown"
             try:
@@ -72,6 +92,7 @@ class ImageStudioHandler(SimpleHTTPRequestHandler):
                 "repoRoot": str(BASE_DIR),
                 "imagesBase": str(IMAGES_BASE),
                 "existingFolders": folders,
+                "foldersDetails": folders_details,
                 "gitBranch": git_branch
             })
             return
@@ -265,6 +286,17 @@ class ImageStudioHandler(SimpleHTTPRequestHandler):
                     self._send_json({"error": str(e)}, status=500)
             else:
                 self._send_json({"success": False, "message": "File not found"}, status=404)
+            return
+
+        if path == "/api/create-folder":
+            folder = data.get("folder", "").strip()
+            safe_folder = "".join(c for c in folder if c.isalnum() or c in ("-", "_")).strip()
+            if not safe_folder:
+                self._send_json({"error": "Invalid folder name"}, status=400)
+                return
+            target_dir = IMAGES_BASE / safe_folder
+            target_dir.mkdir(parents=True, exist_ok=True)
+            self._send_json({"success": True, "folder": safe_folder})
             return
 
         if path == "/api/git-status":

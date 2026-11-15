@@ -9,6 +9,14 @@ echo "========================================================="
 echo "🕉️  Starting Scripture Image Studio..."
 echo "========================================================="
 
+# Gracefully terminate any previous server process on port 8085
+OLD_PID=$(lsof -ti :8085 2>/dev/null)
+if [ -n "$OLD_PID" ]; then
+    echo "Stopping existing instance on port 8085 (PID: $OLD_PID)..."
+    kill -9 $OLD_PID 2>/dev/null || true
+    sleep 1
+fi
+
 # Try python3 first
 if command -v python3 &>/dev/null; then
     echo "Starting with Python 3 on http://localhost:8085 ..."

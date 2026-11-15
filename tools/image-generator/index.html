@@ -71,20 +71,35 @@
         </div>
 
         <div class="form-group">
-          <label class="form-label">Target Subfolder in <code>assets/content/images/</code></label>
-          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <input type="text" id="targetFolderInput" class="form-control" placeholder="e.g. aitareya-upanishad" value="katha-upanishad_hi" style="flex: 1; min-width: 160px;">
-            <select id="folderSelect" class="form-select" style="max-width: 200px;">
-              <option value="">-- Existing Folders --</option>
-            </select>
-            <button class="btn btn-secondary btn-sm" id="loadLocalFolderBtn" title="Load latest local repo images from this folder (including uncommitted files)" style="white-space: nowrap;">
-              <span>📂</span> View Local Images
-            </button>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <label class="form-label" style="margin: 0;">Target Scripture Subfolder</label>
+            <button type="button" class="btn-text-action" id="manualFolderToggle" title="Toggle manual text input">✏️ Edit Path</button>
           </div>
-          <span class="input-hint">
-            Destination Path: <span id="targetPathDisplay" class="path-preview">assets/content/images/katha-upanishad_hi/</span>
-          </span>
-          <span class="input-hint" style="color: var(--accent-blue); margin-top: 2px;">
+
+          <!-- Sleek Interactive Folder Picker (Click opens Drawer) -->
+          <div class="folder-picker-bar" id="openFolderDrawerBtn" role="button" tabindex="0" title="Click to browse & choose folders from searchable drawer">
+            <div class="folder-picker-left">
+              <span class="folder-picker-icon">📁</span>
+              <div class="folder-picker-text">
+                <span class="folder-picker-title" id="selectedFolderNameDisplay">katha-upanishad</span>
+                <span class="folder-picker-sub" id="targetPathDisplay">assets/content/images/katha-upanishad/</span>
+              </div>
+            </div>
+            <div class="folder-picker-right">
+              <span class="folder-picker-badge" id="selectedFolderBadge">Scanning...</span>
+              <button type="button" class="btn btn-secondary btn-sm browse-drawer-action" tabindex="-1">
+                <span>🔍</span> Browse Folders
+              </button>
+            </div>
+          </div>
+
+          <!-- Manual input (collapsible, toggled via 'Edit Path') -->
+          <div id="manualFolderInputGroup" style="display: none; margin-top: 8px; gap: 8px; align-items: center;">
+            <input type="text" id="targetFolderInput" class="form-control" placeholder="e.g. aitareya-upanishad" value="katha-upanishad" style="flex: 1;">
+            <button type="button" class="btn btn-primary btn-sm" id="applyManualFolderBtn">Apply</button>
+          </div>
+
+          <span class="input-hint" style="color: var(--accent-blue); margin-top: 6px;">
             Naming Rule: Title with hyphens (e.g. <code>1.1</code> &rarr; <code>1-1.jpg</code>, <code>1.1.1</code> &rarr; <code>1-1-1.jpg</code>)
           </span>
         </div>
@@ -354,6 +369,51 @@
               <span>💾</span> Crop & Save to Repo
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Searchable Folder Drawer (Slide-Over) -->
+  <div class="drawer-backdrop" id="folderDrawer">
+    <div class="drawer-container">
+      <div class="drawer-header">
+        <div class="drawer-title-group">
+          <h3><span>📁</span> Choose Target Subfolder</h3>
+          <p class="drawer-subtitle">Browse and select image folders from <code>assets/content/images/</code></p>
+        </div>
+        <button class="drawer-close" id="folderDrawerClose" title="Close drawer (Esc)">&times;</button>
+      </div>
+
+      <div class="drawer-body">
+        <!-- Search Input -->
+        <div class="drawer-search-wrapper">
+          <span class="drawer-search-icon">🔍</span>
+          <input type="text" id="folderSearchInput" class="drawer-search-input" placeholder="Search folders (e.g. katha, gita, skanda)..." autocomplete="off" />
+          <button type="button" class="drawer-search-clear" id="folderSearchClear" title="Clear search" style="display: none;">&times;</button>
+        </div>
+
+        <!-- Quick Create New Folder Bar -->
+        <div class="drawer-create-section">
+          <div class="create-folder-bar">
+            <input type="text" id="newFolderNameInput" class="form-control form-control-sm" placeholder="Create new folder (e.g. ken-upanishad)..." />
+            <button type="button" class="btn btn-primary btn-sm" id="createNewFolderBtn">
+              <span>➕</span> Create & Select
+            </button>
+          </div>
+        </div>
+
+        <!-- Drawer Stats Bar -->
+        <div class="drawer-stats-bar">
+          <span id="folderCountDisplay">Scanning folders...</span>
+          <button type="button" class="drawer-refresh-btn" id="refreshFoldersListBtn" title="Rescan folders from disk">
+            <span>🔄</span> Rescan
+          </button>
+        </div>
+
+        <!-- Searchable Folder List / Cards -->
+        <div class="drawer-folder-list" id="drawerFolderList">
+          <!-- Dynamically populated folder cards -->
         </div>
       </div>
     </div>
