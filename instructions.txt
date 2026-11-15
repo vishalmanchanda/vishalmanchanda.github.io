@@ -1,0 +1,4 @@
+
+Run this for UI
+
+./tools/image-generator/run.sh

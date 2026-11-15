@@ -8,6 +8,7 @@ images into assets/content/images/<folder>/<filename>.jpg
 import os
 import sys
 import json
+import re
 import base64
 import urllib.request
 import urllib.parse
@@ -72,6 +73,58 @@ class ImageStudioHandler(SimpleHTTPRequestHandler):
                 "imagesBase": str(IMAGES_BASE),
                 "existingFolders": folders,
                 "gitBranch": git_branch
+            })
+            return
+
+        if path == "/api/folder-images":
+            query = urllib.parse.parse_qs(parsed.query)
+            folder = query.get("folder", [""])[0].strip()
+            safe_folder = "".join(c for c in folder if c.isalnum() or c in ("-", "_")).strip()
+            target_dir = IMAGES_BASE / safe_folder
+            images = []
+            git_statuses = {}
+            uncommitted_count = 0
+
+            if safe_folder and target_dir.exists() and target_dir.is_dir():
+                # Inspect git status to see which files are uncommitted, modified, or untracked
+                try:
+                    rel_dir = f"assets/content/images/{safe_folder}"
+                    res = subprocess.run(["git", "status", "--porcelain", rel_dir], capture_output=True, text=True, cwd=str(BASE_DIR))
+                    if res.returncode == 0:
+                        for line in res.stdout.splitlines():
+                            line = line.rstrip()
+                            if len(line) >= 4:
+                                code = line[:2].strip()
+                                path_part = line[3:].strip()
+                                fname = Path(path_part).name
+                                git_statuses[fname] = code
+                except Exception:
+                    pass
+
+                for f in target_dir.iterdir():
+                    if f.is_file() and f.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp"):
+                        status_code = git_statuses.get(f.name, "clean")
+                        is_committed = (status_code == "clean")
+                        if not is_committed:
+                            uncommitted_count += 1
+                        images.append({
+                            "filename": f.name,
+                            "size": f.stat().st_size,
+                            "modified": int(f.stat().st_mtime * 1000),
+                            "isCommitted": is_committed,
+                            "gitStatus": "uncommitted" if not is_committed else "committed",
+                            "gitCode": status_code
+                        })
+                # Natural sort: 1-1, 1-2, 1-10
+                images.sort(key=lambda x: [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', x["filename"])])
+
+            self._send_json({
+                "folder": safe_folder,
+                "exists": target_dir.exists() if safe_folder else False,
+                "images": images,
+                "totalCount": len(images),
+                "uncommittedCount": uncommitted_count if safe_folder and target_dir.exists() else 0,
+                "committedCount": (len(images) - uncommitted_count) if safe_folder and target_dir.exists() else 0
             })
             return
 
@@ -161,15 +214,57 @@ class ImageStudioHandler(SimpleHTTPRequestHandler):
             safe_folder = "".join(c for c in folder if c.isalnum() or c in ("-", "_")).strip()
             target_dir = IMAGES_BASE / safe_folder
 
+            git_statuses = {}
+            if safe_folder and target_dir.exists():
+                try:
+                    rel_dir = f"assets/content/images/{safe_folder}"
+                    res = subprocess.run(["git", "status", "--porcelain", rel_dir], capture_output=True, text=True, cwd=str(BASE_DIR))
+                    if res.returncode == 0:
+                        for line in res.stdout.splitlines():
+                            line = line.rstrip()
+                            if len(line) >= 4:
+                                code = line[:2].strip()
+                                path_part = line[3:].strip()
+                                fname = Path(path_part).name
+                                git_statuses[fname] = code
+                except Exception:
+                    pass
+
             results = {}
             for fname in filenames:
                 safe_fname = "".join(c for c in fname if c.isalnum() or c in ("-", "_", ".")).strip()
                 if not safe_fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
                     safe_fname += ".jpg"
                 p = target_dir / safe_fname
-                results[fname] = p.exists()
+                exists = p.exists()
+                status_code = git_statuses.get(safe_fname, "clean") if exists else "none"
+                is_committed = (status_code == "clean") if exists else False
+                results[fname] = {
+                    "exists": exists,
+                    "isCommitted": is_committed,
+                    "gitStatus": "committed" if is_committed else "uncommitted",
+                    "gitCode": status_code,
+                    "size": p.stat().st_size if exists else 0,
+                    "modified": int(p.stat().st_mtime * 1000) if exists else 0
+                }
 
             self._send_json({"exists": results})
+            return
+
+        if path == "/api/delete-image":
+            folder = data.get("folder", "").strip()
+            filename = data.get("filename", "").strip()
+            safe_folder = "".join(c for c in folder if c.isalnum() or c in ("-", "_")).strip()
+            safe_filename = "".join(c for c in filename if c.isalnum() or c in ("-", "_", ".")).strip()
+            target_path = IMAGES_BASE / safe_folder / safe_filename
+            if target_path.exists() and target_path.is_file():
+                try:
+                    target_path.unlink()
+                    self._send_json({"success": True, "deleted": safe_filename})
+                except Exception as e:
+                    self._send_json({"error": str(e)}, status=500)
+            else:
+                self._send_json({"success": False, "message": "File not found"}, status=404)
             return
 
         if path == "/api/git-status":

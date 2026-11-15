@@ -53,6 +53,9 @@
             <button class="btn btn-secondary" id="pasteJsonBtn">
               <span>📋</span> Paste JSON
             </button>
+            <button class="btn btn-secondary" id="browseLocalFolderBtn" title="Load images directly from local repo folder (including uncommitted files)">
+              <span>📂</span> Local Repo Images
+            </button>
             <button class="btn btn-outline" id="loadSampleBtn" title="Test with sample Katha Upanishad JSON">
               <span>✨</span> Load Sample
             </button>
@@ -69,11 +72,14 @@
 
         <div class="form-group">
           <label class="form-label">Target Subfolder in <code>assets/content/images/</code></label>
-          <div style="display: flex; gap: 8px;">
-            <input type="text" id="targetFolderInput" class="form-control" placeholder="e.g. aitareya-upanishad" value="katha-upanishad_hi">
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <input type="text" id="targetFolderInput" class="form-control" placeholder="e.g. aitareya-upanishad" value="katha-upanishad_hi" style="flex: 1; min-width: 160px;">
             <select id="folderSelect" class="form-select" style="max-width: 200px;">
               <option value="">-- Existing Folders --</option>
             </select>
+            <button class="btn btn-secondary btn-sm" id="loadLocalFolderBtn" title="Load latest local repo images from this folder (including uncommitted files)" style="white-space: nowrap;">
+              <span>📂</span> View Local Images
+            </button>
           </div>
           <span class="input-hint">
             Destination Path: <span id="targetPathDisplay" class="path-preview">assets/content/images/katha-upanishad_hi/</span>
@@ -165,14 +171,24 @@
           <div class="stat-num" id="chapterSavedCount" style="color: var(--accent-green);">0</div>
           <div class="stat-label">Saved in Repo</div>
         </div>
+        <div class="stat-item" id="uncommittedStatItem" style="display: none;">
+          <div class="stat-num" id="chapterUncommittedCount" style="color: #fb923c;">0</div>
+          <div class="stat-label">⚡ Uncommitted</div>
+        </div>
       </div>
     </div>
 
     <!-- Actions & Toolbar -->
     <div class="actions-toolbar" id="actionsToolbar" style="display: none;">
       <div class="toolbar-left">
-        <button class="btn btn-primary" id="generateAllBtn">
-          <span>⚡</span> Generate All Images
+        <button class="btn btn-outline" id="syncLocalDiskBtn" title="Scan and reload latest images directly from local disk (including uncommitted files)">
+          <span>🔄</span> Sync Local Images
+        </button>
+        <button class="btn btn-primary" id="addCardBtn" title="Add a new verse card">
+          <span>➕</span> Add Card
+        </button>
+        <button class="btn btn-secondary" id="generateAllBtn">
+          <span>⚡</span> Generate All
         </button>
         <button class="btn btn-success" id="saveAllBtn" title="Directly write files to assets/content/images/<folder>/">
           <span>💾</span> Save All to Local Repo
@@ -192,9 +208,10 @@
         <span style="font-size: 12px; color: var(--text-secondary);">Filter:</span>
         <div class="btn-group-inline">
           <button class="btn btn-primary btn-sm filter-btn" data-filter="all">All</button>
-          <button class="btn btn-secondary btn-sm filter-btn" data-filter="pending">Pending</button>
-          <button class="btn btn-secondary btn-sm filter-btn" data-filter="generated">Generated</button>
-          <button class="btn btn-secondary btn-sm filter-btn" data-filter="saved">Saved</button>
+          <button class="btn btn-secondary btn-sm filter-btn" data-filter="uncommitted" title="Images that exist on local disk with uncommitted changes">⚡ Uncommitted (<span id="uncommittedFilterCount">0</span>)</button>
+          <button class="btn btn-secondary btn-sm filter-btn" data-filter="saved">💾 Saved / Disk</button>
+          <button class="btn btn-secondary btn-sm filter-btn" data-filter="generated">🎨 In Memory</button>
+          <button class="btn btn-secondary btn-sm filter-btn" data-filter="pending">⏳ Pending</button>
         </div>
       </div>
 
@@ -246,6 +263,98 @@
       </div>
       <div class="modal-body" style="padding: 16px;">
         <img id="previewModalImg" src="" alt="Full Preview" style="max-width: 100%; max-height: 75vh; border-radius: var(--radius-md); box-shadow: var(--shadow);">
+      </div>
+    </div>
+  </div>
+
+  <!-- Interactive Crop & Save Image Modal -->
+  <div class="modal-backdrop" id="cropModal">
+    <div class="modal-box crop-modal-box">
+      <div class="modal-header">
+        <div class="crop-header-info">
+          <h3 id="cropModalTitle">✂️ Crop Image: Verse 1.1</h3>
+          <span id="cropModalSub" class="crop-modal-sub">assets/content/images/.../1-1.jpg</span>
+        </div>
+        <button class="modal-close" id="cropModalClose">&times;</button>
+      </div>
+
+      <div class="modal-body crop-modal-body">
+        <div class="crop-layout">
+          <!-- Main Interactive Cropper Stage -->
+          <div class="crop-stage-container">
+            <div class="crop-stage" id="cropStage">
+              <img id="cropSourceImg" alt="Cropping Stage Image" crossorigin="anonymous" />
+              <div class="crop-overlay" id="cropOverlay">
+                <div class="crop-box" id="cropBox">
+                  <!-- Rule of Thirds Grid -->
+                  <div class="crop-grid-line crop-grid-h1"></div>
+                  <div class="crop-grid-line crop-grid-h2"></div>
+                  <div class="crop-grid-line crop-grid-v1"></div>
+                  <div class="crop-grid-line crop-grid-v2"></div>
+                  <!-- 8 Handles -->
+                  <div class="crop-handle handle-nw" data-handle="nw"></div>
+                  <div class="crop-handle handle-ne" data-handle="ne"></div>
+                  <div class="crop-handle handle-sw" data-handle="sw"></div>
+                  <div class="crop-handle handle-se" data-handle="se"></div>
+                  <div class="crop-handle handle-n" data-handle="n"></div>
+                  <div class="crop-handle handle-s" data-handle="s"></div>
+                  <div class="crop-handle handle-w" data-handle="w"></div>
+                  <div class="crop-handle handle-e" data-handle="e"></div>
+                </div>
+              </div>
+            </div>
+            <div class="crop-stage-hint">
+              💡 Drag inside the box to reposition. Drag corners or edges to resize crop area.
+            </div>
+          </div>
+
+          <!-- Crop Sidebar / Controls & Live Preview -->
+          <div class="crop-sidebar">
+            <div class="crop-sidebar-section">
+              <span class="crop-section-label">Live Preview:</span>
+              <div class="crop-preview-container">
+                <canvas id="cropPreviewCanvas" width="180" height="180"></canvas>
+              </div>
+              <div class="crop-dim-badge" id="cropDimensions">1024 × 1024 px</div>
+            </div>
+
+            <div class="crop-sidebar-section">
+              <span class="crop-section-label">Aspect Ratio:</span>
+              <div class="crop-aspect-buttons">
+                <button type="button" class="btn btn-sm aspect-btn active" data-aspect="1" title="1:1 Square (Standard for Scripture Cards)">1:1 Square</button>
+                <button type="button" class="btn btn-sm aspect-btn" data-aspect="1.333333" title="4:3 Standard">4:3</button>
+                <button type="button" class="btn btn-sm aspect-btn" data-aspect="1.777778" title="16:9 Widescreen">16:9 Wide</button>
+                <button type="button" class="btn btn-sm aspect-btn" data-aspect="0.5625" title="9:16 Portrait (Reel / Story / Mobile)">9:16 Portrait</button>
+                <button type="button" class="btn btn-sm aspect-btn" data-aspect="0" title="Free / Unconstrained">Freeform</button>
+              </div>
+            </div>
+
+            <div class="crop-sidebar-section">
+              <span class="crop-section-label">Quick Actions:</span>
+              <div class="crop-action-buttons">
+                <button type="button" class="btn btn-outline btn-sm" id="cropCenterSquareBtn" title="Fit maximum square in center">⬛ Max Square</button>
+                <button type="button" class="btn btn-outline btn-sm" id="cropResetBtn" title="Expand crop to full image">🔄 Full Frame</button>
+                <button type="button" class="btn btn-outline btn-sm" id="cropRevertBtn" title="Revert to original uncropped image" style="display: none;">↺ Revert Original</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Crop Footer Actions -->
+        <div class="crop-modal-footer">
+          <div class="crop-footer-left">
+            <span class="crop-lossless-note">⚡ Visually lossless compression applied</span>
+          </div>
+          <div class="crop-footer-right">
+            <button type="button" class="btn btn-secondary" id="cropCancelBtn">Cancel</button>
+            <button type="button" class="btn btn-primary" id="cropApplyBtn">
+              <span>✂️</span> Apply Crop
+            </button>
+            <button type="button" class="btn btn-success" id="cropSaveBtn">
+              <span>💾</span> Crop & Save to Repo
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>

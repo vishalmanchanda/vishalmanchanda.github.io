@@ -32,13 +32,18 @@ Then open your browser at:
 
 ## 📋 Features
 
-### 1. JSON Upload & Parsing
-- Drag and drop or browse any scripture JSON file.
-- Or click **"Paste JSON"** to paste raw JSON text directly.
-- Or click **"✨ Load Sample"** to instantly test with the Katha Upanishad sample data.
-- Recognizes:
-  - `contentId`: e.g. `"katha-upanishad_hi"` &rarr; sets the target subfolder automatically.
-  - `sections`: each section's `id`, `title` (e.g. `"1.1.1"`), Sanskrit `passage`, Hindi `meaning`, `commentary`, and `wordMeanings`.
+### 1. Dynamic Subfolder Browsing & Local Repo Images (Including Uncommitted Files)
+- **Direct Local Disk Scanning**: Choose any subfolder and click **`📂 View Local Images`** (in Step 2), **`📂 Local Repo Images`** (in Step 1), or **`🔄 Sync Local Images`** (in the toolbar).
+- **See Uncommitted Files Instantly**: Scans files directly on the local filesystem in `assets/content/images/<folder>/`—even if they are **uncommitted, newly created, untracked, or modified** in git.
+- **Git Status Indicators**:
+  - `⚡ Uncommitted (Disk)`: Highlighted with an orange badge indicating the file has local uncommitted changes.
+  - `💾 Saved (Git)`: Highlighted with a green badge indicating the file is committed cleanly in git.
+- **⚡ Uncommitted Filter**: Filter specifically for uncommitted images (`⚡ Uncommitted (X)`) to easily review local changes before committing.
+- **Cache-Busting Direct Serving**: Images are fetched with real-time modification timestamps (`?t=timestamp`), guaranteeing you always see the latest disk version without stale browser caching.
+- **Dynamic Simple JSON**: Automatically generates a lightweight JSON with `id` and `title` derived from image filenames (e.g., `1-1-1.jpg` &rarr; `1.1.1`, `cover.jpg` &rarr; `Cover`).
+- **➕ Add New Card**: Click **`➕ Add Card`** in the toolbar or click the placeholder card at the end of the grid. It auto-suggests the next verse number (e.g. `1.1.4`), creates the card, and lets you immediately paste (`Cmd+V`), upload, or generate an image!
+- **Card Controls**: Rename any title with **`✏️`** (which updates its target filename) or delete with **`🗑️`** (with optional disk deletion).
+- **JSON Upload & Parsing**: You can still upload or paste a complete chapter JSON with Sanskrit passages, Hindi meanings, and commentaries whenever you want full textual metadata.
 
 ### 2. Strict Naming Convention
 - Converts dots in titles to hyphens:
@@ -63,21 +68,43 @@ Then open your browser at:
   - **📋 Copy All Prompts**: Batch copies all prompts for all verses in the chapter at once.
 - Prompts are fully editable on every card before generating.
 
-### 4. Image Copy, Paste & Visually Lossless Compression
-- **📥 Paste Image Directly**:
-  - Click **`📥 Paste Image`** on any verse card to paste directly from your clipboard (e.g. from Google Gemini, Midjourney, ChatGPT, or your screenshot tool).
-  - Or click any card to select it and press **`Cmd + V`** (or `Ctrl + V`).
-  - Or **Drag & Drop** an image file directly onto the card.
+### 4. Uncropped Pasting & Hover-to-View-Full Display
+- **📥 Paste As Is (No Auto-Cropping)**:
+  - When an image is pasted (via **`📥 Paste Image`**, **`Cmd + V`**, or drag-and-drop), it is **not** cropped to a square.
+  - Its natural aspect ratio (widescreen 16:9, portrait 9:16, standard 4:3) is strictly preserved without cutting off any edges.
+  - Automatically compressed using visually lossless multi-step downsampling (keeps file size small, e.g. ~150KB–250KB, without losing visual quality).
+- **👁️ Display Fully on Hover**:
+  - In the verse card grid, images maintain a clean, uniform card layout.
+  - Hovering your cursor over the card's image box instantly transitions to **`object-fit: contain`**, displaying the **full, uncropped image** with zero edges clipped.
+  - An illuminated, frosted backdrop softly matches the artwork's colors in the margins.
+  - An aspect ratio badge (e.g. `📐 16:9 Wide`) appears on non-square artwork, and a glowing gold pill (`👁️ Full uncropped view`) appears on hover.
 - **📋 Copy Image to Clipboard**:
-  - Click the **`📋 Copy Img`** button on the card or overlay to copy the image directly to your OS clipboard as a PNG blob, ready to paste into any application.
-- **⚡ Visually Lossless Compression**:
-  - Automatically crops and optimizes uploaded and pasted images to 1024x1024 square.
-  - Multi-step bicubic downscaling preserves sharp text, intricate details, and natural colors.
-  - Slashes file sizes from 5MB–10MB down to **~150KB–250KB** (typically **85%–95% space saved**) with zero visible degradation.
-  - Displays live compression statistics (`💾 185 KB`) on every card.
-  - Quality selector in settings: **High Fidelity (88%)**, **Maximum (95%)**, or **Web Optimized (82%)**.
+  - Click **`📋 Copy Img`** on the card or overlay to copy the image directly to your OS clipboard as a PNG blob, ready to paste into any external app.
 
-### 5. Multiple Image AI Providers
+### 5. Interactive Crop & Save Studio ✂️
+- **✂️ Optional Crop On Demand**:
+  - If you decide you want a 1:1 square image or custom framing for the website scripture grid, click the **`✂️ Crop`** button on the card footer or on the image overlay.
+- **Interactive Cropping Box**:
+  - Drag inside the box to reposition.
+  - 8 resize handles (corners and edges) for precise framing.
+  - Rule-of-thirds composition grid overlay.
+- **Aspect Ratio Modes**:
+  - **1:1 Square** (default preset, optimal for scripture cards)
+  - **4:3 Standard**
+  - **16:9 Widescreen**
+  - **9:16 Portrait** (Reel / Story / Mobile vertical view)
+  - **Freeform** (unconstrained custom selection)
+- **Quick Actions**:
+  - **⬛ Max Square**: Centers the maximum possible 1:1 square inside the image.
+  - **🔄 Full Frame**: Expands crop box to the entire image.
+  - **↺ Revert Original**: Non-destructive editing allows reverting back to the original uncropped image at any time.
+- **Live Preview & Dimension Readout**:
+  - Real-time preview canvas shows the exact cropped result alongside pixel dimensions (e.g. `1024 × 1024 px`).
+- **Save Options**:
+  - **`✂️ Apply Crop`**: Updates the card in memory with the cropped artwork.
+  - **`💾 Crop & Save to Repo`**: Applies the crop and immediately writes the optimized JPEG to `assets/content/images/<folder>/<filename>.jpg` on disk!
+
+### 6. Multiple Image AI Providers
 1. **Pollinations AI (Flux / Turbo / SDXL)**:
    - **100% Free, Zero Setup, No API Key needed.**
    - Generates high quality 1024x1024 square artwork instantly with automatic fallback.
@@ -90,7 +117,7 @@ Then open your browser at:
 5. **Custom Image Upload**:
    - Drag & drop or upload existing images to any verse slot with automatic lossless compression.
 
-### 6. Saving to GitHub & Local Repository
+### 7. Saving to GitHub & Local Repository
 - **💾 Save to Local Repo**: Directly writes the `.jpg` into `assets/content/images/<folder>/<filename>.jpg`. Creates the subfolder automatically if it doesn't already exist.
 - **⚡ Batch Generate All & Save All**: One-click generation for all verses with a real-time progress bar.
 - **🐙 Git Commit**: One-click local git commit for the newly generated images.

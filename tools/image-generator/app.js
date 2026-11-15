@@ -62,6 +62,7 @@ const elements = {
   chapterGeneratedCount: document.getElementById('chapterGeneratedCount'),
   chapterSavedCount: document.getElementById('chapterSavedCount'),
   actionsToolbar: document.getElementById('actionsToolbar'),
+  addCardBtn: document.getElementById('addCardBtn'),
   generateAllBtn: document.getElementById('generateAllBtn'),
   saveAllBtn: document.getElementById('saveAllBtn'),
   downloadZipBtn: document.getElementById('downloadZipBtn'),
@@ -81,6 +82,28 @@ const elements = {
   previewModalClose: document.getElementById('previewModalClose'),
   previewModalImg: document.getElementById('previewModalImg'),
   previewModalTitle: document.getElementById('previewModalTitle'),
+  cropModal: document.getElementById('cropModal'),
+  cropModalClose: document.getElementById('cropModalClose'),
+  cropModalTitle: document.getElementById('cropModalTitle'),
+  cropModalSub: document.getElementById('cropModalSub'),
+  cropStage: document.getElementById('cropStage'),
+  cropSourceImg: document.getElementById('cropSourceImg'),
+  cropOverlay: document.getElementById('cropOverlay'),
+  cropBox: document.getElementById('cropBox'),
+  cropPreviewCanvas: document.getElementById('cropPreviewCanvas'),
+  cropDimensions: document.getElementById('cropDimensions'),
+  cropCenterSquareBtn: document.getElementById('cropCenterSquareBtn'),
+  cropResetBtn: document.getElementById('cropResetBtn'),
+  cropRevertBtn: document.getElementById('cropRevertBtn'),
+  cropCancelBtn: document.getElementById('cropCancelBtn'),
+  cropApplyBtn: document.getElementById('cropApplyBtn'),
+  cropSaveBtn: document.getElementById('cropSaveBtn'),
+  loadLocalFolderBtn: document.getElementById('loadLocalFolderBtn'),
+  browseLocalFolderBtn: document.getElementById('browseLocalFolderBtn'),
+  syncLocalDiskBtn: document.getElementById('syncLocalDiskBtn'),
+  uncommittedStatItem: document.getElementById('uncommittedStatItem'),
+  chapterUncommittedCount: document.getElementById('chapterUncommittedCount'),
+  uncommittedFilterCount: document.getElementById('uncommittedFilterCount'),
   toastContainer: document.getElementById('toastContainer')
 };
 
@@ -110,10 +133,39 @@ function formatBytes(bytes) {
 }
 
 /**
- * Visually Lossless Compression for Scripture Images
- * Multi-step bicubic downsampling with high-fidelity JPEG encoding.
+ * Returns human-readable aspect ratio label (e.g. "16:9 Wide", "1:1 Square")
  */
-async function compressImageSource(source, targetDim = 1024, quality = 0.88) {
+function getAspectLabel(aspect) {
+  if (!aspect || Math.abs(aspect - 1.0) < 0.05) return '1:1 Square';
+  if (Math.abs(aspect - 1.777) < 0.1) return '16:9 Wide';
+  if (Math.abs(aspect - 1.333) < 0.1) return '4:3';
+  if (Math.abs(aspect - 0.5625) < 0.08) return '9:16 Portrait';
+  if (aspect > 1) return `${aspect.toFixed(1)}:1 Wide`;
+  return `1:${(1 / aspect).toFixed(1)} Tall`;
+}
+
+/**
+ * Visually Lossless Compression for Scripture Images
+ * - Uncropped by default: strictly preserves natural aspect ratio (does not crop edges).
+ * - Multi-step bicubic downsampling with high-fidelity JPEG encoding.
+ * - Optional cropSquare: if true, center-crops to square.
+ */
+async function compressImageSource(source, options = {}) {
+  let maxDim = 1600;
+  let quality = state.compressionQuality || 0.88;
+  let cropSquare = false;
+
+  if (typeof options === 'number') {
+    maxDim = options;
+    if (typeof arguments[2] === 'number') quality = arguments[2];
+    if (typeof arguments[3] === 'boolean') cropSquare = arguments[3];
+  } else if (typeof options === 'object' && options !== null) {
+    if (options.maxDim) maxDim = options.maxDim;
+    if (options.targetDim) maxDim = options.targetDim;
+    if (options.quality !== undefined) quality = options.quality;
+    if (options.cropSquare !== undefined) cropSquare = options.cropSquare;
+  }
+
   return new Promise((resolve, reject) => {
     let originalSize = 0;
     if (source instanceof Blob || source instanceof File) {
@@ -125,44 +177,72 @@ async function compressImageSource(source, targetDim = 1024, quality = 0.88) {
 
     img.onload = () => {
       try {
-        let curWidth = img.naturalWidth || img.width;
-        let curHeight = img.naturalHeight || img.height;
-
-        const minDim = Math.min(curWidth, curHeight);
-        const sx = (curWidth - minDim) / 2;
-        const sy = (curHeight - minDim) / 2;
+        const origW = img.naturalWidth || img.width;
+        const origH = img.naturalHeight || img.height;
+        const aspect = origW / origH;
 
         let curCanvas = document.createElement('canvas');
-        curCanvas.width = minDim;
-        curCanvas.height = minDim;
         let ctx = curCanvas.getContext('2d');
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, minDim, minDim);
 
-        let stepDim = minDim;
-        while (stepDim * 0.5 > targetDim) {
-          stepDim = Math.floor(stepDim * 0.5);
-          const nextCanvas = document.createElement('canvas');
-          nextCanvas.width = stepDim;
-          nextCanvas.height = stepDim;
-          const nextCtx = nextCanvas.getContext('2d');
-          nextCtx.imageSmoothingEnabled = true;
-          nextCtx.imageSmoothingQuality = 'high';
-          nextCtx.drawImage(curCanvas, 0, 0, stepDim, stepDim);
-          curCanvas = nextCanvas;
+        let targetW, targetH;
+
+        if (cropSquare) {
+          // Explicit center square crop
+          const minDim = Math.min(origW, origH);
+          const sx = (origW - minDim) / 2;
+          const sy = (origH - minDim) / 2;
+          targetW = Math.min(maxDim, minDim);
+          targetH = targetW;
+
+          curCanvas.width = targetW;
+          curCanvas.height = targetH;
+          ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, targetW, targetH);
+        } else {
+          // Uncropped: preserve natural aspect ratio
+          targetW = origW;
+          targetH = origH;
+          if (targetW > maxDim || targetH > maxDim) {
+            if (targetW >= targetH) {
+              targetW = maxDim;
+              targetH = Math.round(maxDim / aspect);
+            } else {
+              targetH = maxDim;
+              targetW = Math.round(maxDim * aspect);
+            }
+          }
+
+          // Multi-step bicubic downsample if downsampling by more than 2x
+          let stepW = origW;
+          let stepH = origH;
+          let tempCanvas = document.createElement('canvas');
+          tempCanvas.width = stepW;
+          tempCanvas.height = stepH;
+          let tempCtx = tempCanvas.getContext('2d');
+          tempCtx.imageSmoothingEnabled = true;
+          tempCtx.imageSmoothingQuality = 'high';
+          tempCtx.drawImage(img, 0, 0, stepW, stepH);
+
+          while (stepW * 0.5 > targetW && stepH * 0.5 > targetH) {
+            stepW = Math.floor(stepW * 0.5);
+            stepH = Math.floor(stepH * 0.5);
+            const nextCanvas = document.createElement('canvas');
+            nextCanvas.width = stepW;
+            nextCanvas.height = stepH;
+            const nextCtx = nextCanvas.getContext('2d');
+            nextCtx.imageSmoothingEnabled = true;
+            nextCtx.imageSmoothingQuality = 'high';
+            nextCtx.drawImage(tempCanvas, 0, 0, stepW, stepH);
+            tempCanvas = nextCanvas;
+          }
+
+          curCanvas.width = targetW;
+          curCanvas.height = targetH;
+          ctx.drawImage(tempCanvas, 0, 0, targetW, targetH);
         }
 
-        const finalCanvas = document.createElement('canvas');
-        finalCanvas.width = targetDim;
-        finalCanvas.height = targetDim;
-        const finalCtx = finalCanvas.getContext('2d');
-        finalCtx.imageSmoothingEnabled = true;
-        finalCtx.imageSmoothingQuality = 'high';
-        finalCtx.drawImage(curCanvas, 0, 0, targetDim, targetDim);
-
-        const dataUrl = finalCanvas.toDataURL('image/jpeg', quality);
-
+        const dataUrl = curCanvas.toDataURL('image/jpeg', quality);
         const head = dataUrl.indexOf(',');
         const b64Len = dataUrl.length - (head + 1);
         const compressedSize = Math.round(b64Len * 0.75);
@@ -171,8 +251,12 @@ async function compressImageSource(source, targetDim = 1024, quality = 0.88) {
           dataUrl,
           originalSize: originalSize || compressedSize,
           compressedSize,
-          width: targetDim,
-          height: targetDim
+          width: targetW,
+          height: targetH,
+          originalWidth: origW,
+          originalHeight: origH,
+          aspectRatio: aspect,
+          isCropped: cropSquare
         });
       } catch (err) {
         reject(err);
@@ -185,6 +269,8 @@ async function compressImageSource(source, targetDim = 1024, quality = 0.88) {
       img.src = source;
     } else if (source instanceof Blob || source instanceof File) {
       img.src = URL.createObjectURL(source);
+    } else if (source instanceof HTMLCanvasElement) {
+      img.src = source.toDataURL('image/png');
     } else if (source.src) {
       img.src = source.src;
     } else {
@@ -207,6 +293,217 @@ function titleToFilename(title) {
   clean = clean.replace(/[^a-zA-Z0-9_-]/g, '');
   return `${clean}.jpg`;
 }
+
+// Convert Image Filename (e.g. 1-1-1.jpg or cover.jpg) to Title (e.g. 1.1.1 or Cover)
+function filenameToTitle(filename) {
+  if (!filename) return 'Verse';
+  const base = filename.replace(/\.(jpg|jpeg|png|webp)$/i, '');
+  if (base.toLowerCase() === 'cover') return 'Cover';
+  return base.replace(/-/g, '.');
+}
+
+// Calculate next suggested verse title
+function getNextTitle(existingTitles) {
+  if (!existingTitles || existingTitles.length === 0) return '1.1.1';
+  const valid = existingTitles.filter(t => /\d+/.test(t));
+  if (valid.length === 0) return '1.1';
+  const last = valid[valid.length - 1];
+  return last.replace(/(\d+)(?!.*\d)/, (m) => parseInt(m, 10) + 1);
+}
+
+// Fetch images from subfolder and dynamically construct simple JSON
+async function loadSubfolderImages(folderName, forceRefresh = false) {
+  if (!folderName) return;
+  const safeFolder = folderName.replace(/[^a-zA-Z0-9_-]/g, '').trim();
+  if (!safeFolder) return;
+
+  state.targetFolder = safeFolder;
+  elements.targetFolderInput.value = safeFolder;
+  elements.targetPathDisplay.textContent = `assets/content/images/${safeFolder}/`;
+
+  if (!state.serverConnected) {
+    showToast('Local server not connected. Connect server to view local repository images.', 'info');
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/folder-images?folder=${encodeURIComponent(safeFolder)}&_t=${Date.now()}`);
+    if (!res.ok) return;
+
+    const data = await res.json();
+    const imageList = data.images || [];
+
+    // Dynamically create simple JSON with just id, title, and filename
+    const dynamicSections = imageList.map((img, idx) => {
+      const title = filenameToTitle(img.filename);
+      const imgPath = `/assets/content/images/${safeFolder}/${img.filename}?t=${img.modified || Date.now()}`;
+      const isCommitted = img.isCommitted !== false;
+      return {
+        id: String(idx + 1),
+        title: title,
+        filename: img.filename,
+        imageUrl: imgPath,
+        rawImageUrl: imgPath,
+        fileSize: img.size || null,
+        isCommitted: isCommitted,
+        gitStatus: img.gitStatus || (isCommitted ? 'committed' : 'uncommitted'),
+        gitCode: img.gitCode || '',
+        status: isCommitted ? 'saved' : 'uncommitted',
+        prompt: '',
+        isDynamic: true,
+        aspectRatio: 1.0,
+        isCropped: false
+      };
+    });
+
+    // Probe loaded images for natural dimensions & aspect ratios
+    dynamicSections.forEach(sec => {
+      const probe = new Image();
+      probe.onload = () => {
+        sec.imageWidth = probe.naturalWidth;
+        sec.imageHeight = probe.naturalHeight;
+        sec.aspectRatio = probe.naturalWidth / probe.naturalHeight;
+        renderCards();
+      };
+      probe.src = sec.imageUrl;
+    });
+
+    const uncommittedCount = data.uncommittedCount || 0;
+    const committedCount = data.committedCount || (imageList.length - uncommittedCount);
+    state.uncommittedCount = uncommittedCount;
+    state.committedCount = committedCount;
+
+    const uncommittedDesc = uncommittedCount > 0 
+      ? ` • ⚡ ${uncommittedCount} uncommitted on disk` 
+      : ' • 💾 all clean in git';
+
+    const simpleJson = {
+      id: 1,
+      title: safeFolder.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+      description: `Local Repo Folder: assets/content/images/${safeFolder}/ (${imageList.length} images${uncommittedDesc})`,
+      contentId: safeFolder,
+      sectionCount: dynamicSections.length,
+      sections: dynamicSections,
+      isSimpleDynamic: true
+    };
+
+    state.jsonData = simpleJson;
+    state.sections = dynamicSections;
+    renderUI();
+    updateStats();
+
+    if (uncommittedCount > 0) {
+      showToast(`📂 Showing ${imageList.length} local images from "${safeFolder}" (${uncommittedCount} uncommitted on disk)`, 'info');
+    } else {
+      showToast(`📂 Showing ${imageList.length} local images from "${safeFolder}" (all clean in git)`, 'success');
+    }
+  } catch (err) {
+    console.warn('Failed to load subfolder images:', err);
+    showToast('Failed to load local repo images: ' + err.message, 'error');
+  }
+}
+
+// Handle folder change from input or dropdown
+async function handleTargetFolderChange(folderName) {
+  if (!folderName) return;
+  await loadSubfolderImages(folderName);
+}
+
+// Add a new verse card
+window.addNewVerseCard = function() {
+  if (!state.targetFolder) {
+    state.targetFolder = elements.targetFolderInput.value.trim() || 'scripture-images';
+  }
+
+  if (!state.jsonData) {
+    state.jsonData = {
+      id: 1,
+      title: state.targetFolder.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+      description: `Target: assets/content/images/${state.targetFolder}/`,
+      contentId: state.targetFolder,
+      sectionCount: 0,
+      sections: [],
+      isSimpleDynamic: true
+    };
+  }
+
+  const existingTitles = state.sections.map(s => s.title);
+  const nextTitle = getNextTitle(existingTitles);
+  const nextFilename = titleToFilename(nextTitle);
+
+  const newSection = {
+    id: String(Date.now()),
+    title: nextTitle,
+    filename: nextFilename,
+    imageUrl: null,
+    fileSize: null,
+    status: 'pending',
+    prompt: synthesizePrompt({ title: nextTitle }, state.jsonData.description || '', state.jsonData.title || '', state.selectedStyle)
+  };
+
+  state.sections.push(newSection);
+  state.activeVerseId = newSection.id;
+
+  updateStats();
+  renderUI();
+
+  setTimeout(() => {
+    const el = document.getElementById(`card-${newSection.id}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setActiveCard(newSection.id);
+    }
+  }, 100);
+
+  showToast(`➕ Added new card: Verse ${nextTitle} (${nextFilename})`, 'success');
+};
+
+// Edit / Rename Verse Title
+window.editVerseTitle = function(id) {
+  const sec = state.sections.find(s => s.id === id);
+  if (!sec) return;
+
+  const newTitle = prompt(`Edit title for verse (current: "${sec.title}"):`, sec.title);
+  if (!newTitle || newTitle.trim() === '' || newTitle.trim() === sec.title) return;
+
+  sec.title = newTitle.trim();
+  sec.filename = titleToFilename(sec.title);
+  showToast(`Renamed to Verse ${sec.title} (${sec.filename})`, 'info');
+  renderCards();
+};
+
+// Delete Card & Optional Disk Image
+window.deleteVerseCard = async function(id) {
+  const sec = state.sections.find(s => s.id === id);
+  if (!sec) return;
+
+  const confirmMsg = sec.status === 'saved'
+    ? `Delete Verse ${sec.title} (${sec.filename}) from disk and repository?`
+    : `Remove card for Verse ${sec.title}?`;
+
+  if (!confirm(confirmMsg)) return;
+
+  if (sec.status === 'saved' && state.serverConnected) {
+    try {
+      const res = await fetch('/api/delete-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder: state.targetFolder, filename: sec.filename })
+      });
+      if (res.ok) {
+        showToast(`Deleted ${sec.filename} from disk`, 'info');
+      }
+    } catch (e) {
+      console.warn('Disk delete error:', e);
+    }
+  }
+
+  state.sections = state.sections.filter(s => s.id !== id);
+  if (state.activeVerseId === id) state.activeVerseId = null;
+  updateStats();
+  renderCards();
+  showToast(`Removed card for Verse ${sec.title}`, 'info');
+};
 
 // Clean and sanitize prompt for URL requests (prevents 403 Forbidden errors)
 function cleanPromptForUrl(str) {
@@ -304,6 +601,12 @@ async function checkServerStatus() {
       elements.serverBadge.className = 'server-badge';
       elements.serverStatusText.textContent = `Local Server Connected (${data.gitBranch || 'master'})`;
       updateFolderDropdown();
+
+      // Auto-load images from initial target folder if no JSON is active
+      if (!state.jsonData) {
+        const initialFolder = elements.targetFolderInput.value.trim() || (state.existingFolders[0] || 'katha-upanishad');
+        loadSubfolderImages(initialFolder);
+      }
       return true;
     }
   } catch (e) {}
@@ -389,9 +692,18 @@ async function checkExistingDiskImages() {
       const data = await res.json();
       const existsMap = data.exists || {};
       state.sections.forEach(sec => {
-        if (existsMap[sec.filename] && !sec.imageUrl) {
-          sec.status = 'saved';
-          sec.imageUrl = `/assets/content/images/${state.targetFolder}/${sec.filename}`;
+        const info = existsMap[sec.filename];
+        if (info && (info === true || info.exists) && !sec.imageUrl) {
+          const isObj = typeof info === 'object';
+          const isCommitted = isObj ? (info.isCommitted !== false) : true;
+          const modified = isObj ? info.modified : Date.now();
+          sec.status = isCommitted ? 'saved' : 'uncommitted';
+          sec.isCommitted = isCommitted;
+          sec.gitStatus = isObj ? info.gitStatus : (isCommitted ? 'committed' : 'uncommitted');
+          sec.gitCode = isObj ? info.gitCode : '';
+          sec.fileSize = isObj ? info.size : null;
+          sec.imageUrl = `/assets/content/images/${state.targetFolder}/${sec.filename}?t=${modified || Date.now()}`;
+          sec.rawImageUrl = sec.imageUrl;
         }
       });
       renderCards();
@@ -406,11 +718,22 @@ async function checkExistingDiskImages() {
 function updateStats() {
   const total = state.sections.length;
   const generated = state.sections.filter(s => s.imageUrl).length;
-  const saved = state.sections.filter(s => s.status === 'saved').length;
+  const uncommitted = state.sections.filter(s => s.imageUrl && (s.gitStatus === 'uncommitted' || s.isCommitted === false)).length;
+  const saved = state.sections.filter(s => s.imageUrl && (s.status === 'saved' || s.isCommitted === true)).length;
 
   elements.chapterSectionCount.textContent = total;
   elements.chapterGeneratedCount.textContent = generated;
   elements.chapterSavedCount.textContent = saved;
+
+  if (elements.chapterUncommittedCount) {
+    elements.chapterUncommittedCount.textContent = uncommitted;
+  }
+  if (elements.uncommittedFilterCount) {
+    elements.uncommittedFilterCount.textContent = uncommitted;
+  }
+  if (elements.uncommittedStatItem) {
+    elements.uncommittedStatItem.style.display = uncommitted > 0 ? 'block' : 'none';
+  }
 }
 
 // Render Header & Grid
@@ -441,14 +764,28 @@ function renderCards() {
 
   const filtered = state.sections.filter(sec => {
     if (state.filterStatus === 'all') return true;
-    if (state.filterStatus === 'pending') return sec.status === 'pending';
-    if (state.filterStatus === 'generated') return sec.status === 'generated';
-    if (state.filterStatus === 'saved') return sec.status === 'saved';
+    if (state.filterStatus === 'uncommitted') return sec.imageUrl && (sec.gitStatus === 'uncommitted' || sec.isCommitted === false);
+    if (state.filterStatus === 'saved') return sec.imageUrl && (sec.status === 'saved' || sec.isCommitted === true);
+    if (state.filterStatus === 'pending') return !sec.imageUrl;
+    if (state.filterStatus === 'generated') return sec.status === 'generated' && !sec.gitStatus;
     return true;
   });
 
   if (filtered.length === 0) {
-    container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-muted);">No verses matching current filter.</div>';
+    if (state.sections.length === 0) {
+      const addPlaceholder = document.createElement('div');
+      addPlaceholder.className = 'add-card-placeholder';
+      addPlaceholder.title = 'Add a new verse card to this folder';
+      addPlaceholder.onclick = () => { addNewVerseCard(); };
+      addPlaceholder.innerHTML = `
+        <div class="add-card-icon">➕</div>
+        <div class="add-card-title">Folder is Empty</div>
+        <div class="add-card-sub">Click here or use "+ Add Card" in the toolbar to create the first card</div>
+      `;
+      container.appendChild(addPlaceholder);
+    } else {
+      container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-muted);">No verses matching current filter.</div>';
+    }
     return;
   }
 
@@ -478,29 +815,51 @@ function renderCards() {
       }
     });
 
+    const isUncommitted = sec.imageUrl && (sec.gitStatus === 'uncommitted' || sec.isCommitted === false);
     let statusText = '⏳ Pending';
-    if (sec.status === 'generating') statusText = '⚡ Optimizing...';
-    if (sec.status === 'generated') statusText = '🎨 Ready';
-    if (sec.status === 'saved') statusText = '💾 Saved in Repo';
-    if (sec.status === 'error') statusText = '⚠️ Error';
+    let statusClass = sec.status;
+
+    if (isUncommitted) {
+      statusText = '⚡ Uncommitted (Disk)';
+      statusClass = 'uncommitted';
+    } else if (sec.status === 'saved' || sec.isCommitted) {
+      statusText = '💾 Saved (Git)';
+      statusClass = 'saved';
+    } else if (sec.status === 'generating') {
+      statusText = '⚡ Optimizing...';
+    } else if (sec.status === 'generated') {
+      statusText = '🎨 In Memory';
+    } else if (sec.status === 'error') {
+      statusText = '⚠️ Error';
+    }
 
     const fullPath = `assets/content/images/${state.targetFolder}/${sec.filename}`;
+    const isNonSquare = sec.aspectRatio && Math.abs(sec.aspectRatio - 1.0) > 0.05;
 
     card.innerHTML = `
       <div class="verse-card-header">
         <div class="verse-identity">
           <span class="verse-number">Verse ${sec.title}</span>
+          <button class="card-title-btn" onclick="event.stopPropagation(); editVerseTitle('${sec.id}')" title="Rename Verse Title">✏️</button>
           <span class="filename-badge" title="Target file path: ${fullPath}">${sec.filename}</span>
+          ${isUncommitted ? `<span class="uncommitted-disk-badge" title="Latest local disk file (uncommitted changes in git)">⚡ Uncommitted</span>` : ''}
         </div>
-        <span class="status-pill ${sec.status}">${statusText}</span>
+        <div class="card-header-actions">
+          <span class="status-pill ${statusClass}">${statusText}</span>
+          <button class="delete-card-btn" onclick="event.stopPropagation(); deleteVerseCard('${sec.id}')" title="Delete card and image">🗑️</button>
+        </div>
       </div>
 
       <div class="verse-image-box" id="img-box-${sec.id}">
         ${sec.imageUrl 
-          ? `<img src="${sec.imageUrl}" alt="Illustration for ${sec.title}" loading="lazy" />
+          ? `<div class="verse-image-backdrop" style="background-image: url('${sec.imageUrl}')"></div>
+             <img src="${sec.imageUrl}" alt="Illustration for ${sec.title}" loading="lazy" />
+             ${isNonSquare ? `<span class="uncropped-tag" title="Natural aspect ratio ${getAspectLabel(sec.aspectRatio)}. Hover over image to view full uncropped frame.">📐 ${getAspectLabel(sec.aspectRatio)}</span>` : ''}
              ${sec.fileSize ? `<span class="size-badge" title="Lossless compressed JPEG size">💾 ${formatBytes(sec.fileSize)}</span>` : ''}
+             <div class="hover-full-indicator">👁️ Full uncropped view</div>
              <div class="image-overlay-actions">
                <button class="overlay-btn" title="Zoom Preview" onclick="event.stopPropagation(); openPreviewModal('${sec.id}')">🔍</button>
+               <button class="overlay-btn" title="Crop & Adjust Frame" onclick="event.stopPropagation(); openCropModal('${sec.id}')">✂️</button>
                <button class="overlay-btn" title="Copy Image to Clipboard" onclick="event.stopPropagation(); copyImageForVerse('${sec.id}')">📋</button>
                <button class="overlay-btn" title="Download Image" onclick="event.stopPropagation(); downloadSingleImage('${sec.id}')">⬇️</button>
              </div>`
@@ -557,6 +916,9 @@ function renderCards() {
             📥 Paste
           </button>
           ${sec.imageUrl ? `
+            <button class="btn btn-outline btn-sm crop-btn" onclick="event.stopPropagation(); openCropModal('${sec.id}')" title="Crop & adjust image frame to square or custom ratio">
+              ✂️ Crop
+            </button>
             <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); copyImageForVerse('${sec.id}')" title="Copy image to clipboard">
               📋 Copy Img
             </button>` : ''}
@@ -570,6 +932,19 @@ function renderCards() {
 
     container.appendChild(card);
   });
+
+  // Always append the "Add New Card" placeholder card at the end of the grid
+  const addPlaceholder = document.createElement('div');
+  addPlaceholder.className = 'add-card-placeholder';
+  addPlaceholder.title = 'Add a new verse card to this folder';
+  addPlaceholder.onclick = () => { addNewVerseCard(); };
+  addPlaceholder.innerHTML = `
+    <div class="add-card-icon">➕</div>
+    <div class="add-card-title">Add New Verse Card</div>
+    <div class="add-card-sub">Next suggested: <strong>Verse ${getNextTitle(state.sections.map(s => s.title))}</strong></div>
+    <span style="font-size: 11px; color: var(--accent-gold); margin-top: 4px;">Click to create card & paste/generate</span>
+  `;
+  container.appendChild(addPlaceholder);
 }
 
 function escapeHtml(str) {
@@ -716,8 +1091,8 @@ function setActiveCard(id) {
 /**
  * Unified Image Import Pipeline (Upload / Paste / Drop)
  * Automatically runs through multi-step lossless compression:
- * - Crops & centers to 1024x1024 square
- * - High quality JPEG compression (88% default)
+ * - Uncropped: strictly preserves original aspect ratio (does not crop edges)
+ * - High quality JPEG compression (visually lossless)
  * - Measures file size reduction & reports stats
  * - Automatically saves to disk if server connected
  */
@@ -729,9 +1104,20 @@ async function handleImageImport(id, fileOrBlob, sourceLabel = 'imported') {
   renderCards();
 
   try {
-    const result = await compressImageSource(fileOrBlob, 1024, state.compressionQuality);
+    // Process WITHOUT cropping - preserve natural aspect ratio
+    const result = await compressImageSource(fileOrBlob, {
+      maxDim: 1600,
+      quality: state.compressionQuality,
+      cropSquare: false
+    });
+
+    sec.rawImageUrl = result.dataUrl;
     sec.imageUrl = result.dataUrl;
     sec.fileSize = result.compressedSize;
+    sec.imageWidth = result.width;
+    sec.imageHeight = result.height;
+    sec.aspectRatio = result.aspectRatio;
+    sec.isCropped = false;
     sec.status = 'generated';
 
     const savedRatio = result.originalSize > result.compressedSize
@@ -741,7 +1127,7 @@ async function handleImageImport(id, fileOrBlob, sourceLabel = 'imported') {
     let msg = `Compressed ${formatBytes(result.originalSize)} ➔ ${formatBytes(result.compressedSize)}`;
     if (savedRatio > 0) msg += ` (${savedRatio}% saved, visually lossless)`;
 
-    showToast(`✅ Verse ${sec.title} image ${sourceLabel}! ${msg}`, 'success');
+    showToast(`✅ Verse ${sec.title} image ${sourceLabel} (uncropped)! ${msg}`, 'success');
 
     // Auto-save to local repo if server connected
     if (state.serverConnected) {
@@ -850,10 +1236,19 @@ window.generateImageForVerse = async function(id) {
       imgDataUrl = await generateOpenAIImage(sec.prompt);
     }
 
-    // Compress & crop generated image to crisp 1024x1024 square
-    const compressed = await compressImageSource(imgDataUrl, 1024, state.compressionQuality);
+    // Compress generated artwork
+    const compressed = await compressImageSource(imgDataUrl, {
+      maxDim: 1024,
+      quality: state.compressionQuality,
+      cropSquare: false
+    });
+    sec.rawImageUrl = compressed.dataUrl;
     sec.imageUrl = compressed.dataUrl;
     sec.fileSize = compressed.compressedSize;
+    sec.imageWidth = compressed.width;
+    sec.imageHeight = compressed.height;
+    sec.aspectRatio = compressed.aspectRatio || 1.0;
+    sec.isCropped = false;
     sec.status = 'generated';
     showToast(`Generated & compressed Verse ${sec.title} (${formatBytes(sec.fileSize)})`, 'success');
 
@@ -1320,18 +1715,18 @@ function setupEventListeners() {
   });
 
   // Target Folder Change
+  elements.targetFolderInput.addEventListener('change', (e) => {
+    handleTargetFolderChange(e.target.value);
+  });
+
   elements.targetFolderInput.addEventListener('input', (e) => {
     state.targetFolder = e.target.value.trim();
     elements.targetPathDisplay.textContent = `assets/content/images/${state.targetFolder}/`;
-    renderCards();
   });
 
   elements.folderSelect.addEventListener('change', (e) => {
     if (e.target.value) {
-      elements.targetFolderInput.value = e.target.value;
-      state.targetFolder = e.target.value;
-      elements.targetPathDisplay.textContent = `assets/content/images/${state.targetFolder}/`;
-      renderCards();
+      handleTargetFolderChange(e.target.value);
     }
   });
 
@@ -1416,7 +1811,27 @@ function setupEventListeners() {
     await handleImageImport(targetId, imageFile, 'pasted from clipboard');
   });
 
+  // Local Repo Folder Buttons
+  if (elements.loadLocalFolderBtn) {
+    elements.loadLocalFolderBtn.addEventListener('click', () => {
+      loadSubfolderImages(state.targetFolder, true);
+    });
+  }
+  if (elements.browseLocalFolderBtn) {
+    elements.browseLocalFolderBtn.addEventListener('click', () => {
+      loadSubfolderImages(state.targetFolder, true);
+    });
+  }
+  if (elements.syncLocalDiskBtn) {
+    elements.syncLocalDiskBtn.addEventListener('click', () => {
+      loadSubfolderImages(state.targetFolder, true);
+    });
+  }
+
   // Batch Buttons
+  if (elements.addCardBtn) {
+    elements.addCardBtn.addEventListener('click', addNewVerseCard);
+  }
   elements.generateAllBtn.addEventListener('click', generateAll);
   elements.saveAllBtn.addEventListener('click', saveAllToRepo);
   elements.downloadZipBtn.addEventListener('click', downloadAllAsZip);
@@ -1434,6 +1849,551 @@ function setupEventListeners() {
       renderCards();
     });
   });
+
+  // Setup Interactive Cropper Modal listeners
+  setupCropperEvents();
+}
+
+// ============================================================================
+// Interactive Cropper Module (Pure JS / Canvas - Zero External Dependencies)
+// ============================================================================
+
+const cropState = {
+  activeVerseId: null,
+  aspect: 1.0, // 1.0 = square (1:1), 1.333 = 4:3, 1.777 = 16:9, 0 = free
+  naturalWidth: 0,
+  naturalHeight: 0,
+  displayLeft: 0,
+  displayTop: 0,
+  displayWidth: 0,
+  displayHeight: 0,
+  boxX: 0,
+  boxY: 0,
+  boxW: 0,
+  boxH: 0,
+  isDragging: false,
+  isResizing: false,
+  activeHandle: null,
+  startX: 0,
+  startY: 0,
+  startBoxX: 0,
+  startBoxY: 0,
+  startBoxW: 0,
+  startBoxH: 0
+};
+
+// Open Interactive Crop Modal for a Verse
+window.openCropModal = function(id) {
+  setActiveCard(id);
+  const sec = state.sections.find(s => s.id === id);
+  if (!sec || !sec.imageUrl) {
+    showToast('No image available to crop.', 'info');
+    return;
+  }
+
+  cropState.activeVerseId = id;
+  const sourceUrl = sec.rawImageUrl || sec.imageUrl;
+
+  if (elements.cropModalTitle) {
+    elements.cropModalTitle.textContent = `✂️ Crop Image: Verse ${sec.title}`;
+  }
+  if (elements.cropModalSub) {
+    elements.cropModalSub.textContent = `Target: assets/content/images/${state.targetFolder}/${sec.filename}`;
+  }
+  if (elements.cropRevertBtn) {
+    elements.cropRevertBtn.style.display = (sec.isCropped && sec.rawImageUrl) ? 'block' : 'none';
+  }
+
+  // Default to 1:1 Square
+  cropState.aspect = 1.0;
+  document.querySelectorAll('.aspect-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-aspect') === '1');
+  });
+
+  const cropImg = elements.cropSourceImg;
+  cropImg.onload = () => {
+    initCropStage();
+    elements.cropModal.classList.add('active');
+  };
+  cropImg.onerror = () => {
+    showToast('Failed to load image for cropping.', 'error');
+  };
+  cropImg.src = sourceUrl;
+};
+
+window.cropImageForVerse = window.openCropModal;
+
+// Initialize stage positions & default crop box
+function initCropStage() {
+  const stage = elements.cropStage;
+  const img = elements.cropSourceImg;
+  const overlay = elements.cropOverlay;
+  const box = elements.cropBox;
+
+  if (!stage || !img || !overlay || !box) return;
+
+  const stageRect = stage.getBoundingClientRect();
+  const imgRect = img.getBoundingClientRect();
+
+  cropState.displayWidth = imgRect.width;
+  cropState.displayHeight = imgRect.height;
+  cropState.displayLeft = imgRect.left - stageRect.left;
+  cropState.displayTop = imgRect.top - stageRect.top;
+  cropState.naturalWidth = img.naturalWidth || imgRect.width;
+  cropState.naturalHeight = img.naturalHeight || imgRect.height;
+
+  overlay.style.left = `${cropState.displayLeft}px`;
+  overlay.style.top = `${cropState.displayTop}px`;
+  overlay.style.width = `${cropState.displayWidth}px`;
+  overlay.style.height = `${cropState.displayHeight}px`;
+
+  // Default to maximum 1:1 square centered in displayed image
+  const size = Math.min(cropState.displayWidth, cropState.displayHeight) * 0.9;
+  cropState.boxW = size;
+  cropState.boxH = size;
+  cropState.boxX = (cropState.displayWidth - size) / 2;
+  cropState.boxY = (cropState.displayHeight - size) / 2;
+
+  updateCropBoxDOM();
+  updateCropPreview();
+}
+
+function updateCropBoxDOM() {
+  const box = elements.cropBox;
+  if (!box) return;
+  box.style.left = `${cropState.boxX}px`;
+  box.style.top = `${cropState.boxY}px`;
+  box.style.width = `${cropState.boxW}px`;
+  box.style.height = `${cropState.boxH}px`;
+}
+
+function updateCropPreview() {
+  const previewCanvas = elements.cropPreviewCanvas;
+  const dimEl = elements.cropDimensions;
+  const img = elements.cropSourceImg;
+  if (!previewCanvas || !img || cropState.displayWidth === 0) return;
+
+  const scale = cropState.naturalWidth / cropState.displayWidth;
+  const cropX = Math.max(0, Math.round(cropState.boxX * scale));
+  const cropY = Math.max(0, Math.round(cropState.boxY * scale));
+  const cropW = Math.max(1, Math.round(cropState.boxW * scale));
+  const cropH = Math.max(1, Math.round(cropState.boxH * scale));
+
+  if (dimEl) {
+    dimEl.textContent = `${cropW} × ${cropH} px`;
+  }
+
+  // Draw into preview canvas
+  const pWidth = 180;
+  const pHeight = Math.max(1, Math.round(180 / (cropW / cropH)));
+  previewCanvas.width = pWidth;
+  previewCanvas.height = pHeight;
+  const ctx = previewCanvas.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, pWidth, pHeight);
+}
+
+// Extract cropped area to compressed dataUrl
+async function getCroppedDataUrl() {
+  const img = elements.cropSourceImg;
+  if (!img || cropState.displayWidth === 0) return null;
+
+  const scale = cropState.naturalWidth / cropState.displayWidth;
+  const cropX = Math.max(0, Math.round(cropState.boxX * scale));
+  const cropY = Math.max(0, Math.round(cropState.boxY * scale));
+  const cropW = Math.max(1, Math.round(cropState.boxW * scale));
+  const cropH = Math.max(1, Math.round(cropState.boxH * scale));
+
+  // Output standard target square dimension (1024) if square, or proportional
+  const targetMax = 1600;
+  let outW, outH;
+  const ratio = cropW / cropH;
+
+  if (cropState.aspect === 1.0) {
+    outW = 1024;
+    outH = 1024;
+  } else if (ratio >= 1.0) {
+    // Landscape / Widescreen
+    outW = Math.min(targetMax, Math.round(cropW));
+    if (outW < 1024) outW = Math.min(targetMax, 1024);
+    outH = Math.round(outW / ratio);
+  } else {
+    // Portrait (e.g. 9:16)
+    outH = Math.min(targetMax, Math.round(cropH));
+    if (outH < 1024) outH = Math.min(targetMax, 1024);
+    outW = Math.round(outH * ratio);
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = outW;
+  canvas.height = outH;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, outW, outH);
+
+  // Compress using visually lossless compression
+  const compressed = await compressImageSource(canvas, {
+    maxDim: targetMax,
+    quality: state.compressionQuality,
+    cropSquare: false
+  });
+
+  return compressed;
+}
+
+function handleBoxResize(handle, dx, dy) {
+  const minSize = 40;
+  let newX = cropState.startBoxX;
+  let newY = cropState.startBoxY;
+  let newW = cropState.startBoxW;
+  let newH = cropState.startBoxH;
+  const aspect = cropState.aspect;
+
+  if (handle === 'se') {
+    newW = Math.max(minSize, cropState.startBoxW + dx);
+    newH = aspect > 0 ? (newW / aspect) : Math.max(minSize, cropState.startBoxH + dy);
+    if (newX + newW > cropState.displayWidth) {
+      newW = cropState.displayWidth - newX;
+      if (aspect > 0) newH = newW / aspect;
+    }
+    if (newY + newH > cropState.displayHeight) {
+      newH = cropState.displayHeight - newY;
+      if (aspect > 0) newW = newH * aspect;
+    }
+  } else if (handle === 'sw') {
+    newW = Math.max(minSize, cropState.startBoxW - dx);
+    newH = aspect > 0 ? (newW / aspect) : Math.max(minSize, cropState.startBoxH + dy);
+    if (newX + cropState.startBoxW - newW < 0) {
+      newW = newX + cropState.startBoxW;
+      if (aspect > 0) newH = newW / aspect;
+    }
+    if (newY + newH > cropState.displayHeight) {
+      newH = cropState.displayHeight - newY;
+      if (aspect > 0) newW = newH * aspect;
+    }
+    newX = cropState.startBoxX + cropState.startBoxW - newW;
+  } else if (handle === 'ne') {
+    newW = Math.max(minSize, cropState.startBoxW + dx);
+    newH = aspect > 0 ? (newW / aspect) : Math.max(minSize, cropState.startBoxH - dy);
+    if (newX + newW > cropState.displayWidth) {
+      newW = cropState.displayWidth - newX;
+      if (aspect > 0) newH = newW / aspect;
+    }
+    if (cropState.startBoxY + cropState.startBoxH - newH < 0) {
+      newH = cropState.startBoxY + cropState.startBoxH;
+      if (aspect > 0) newW = newH * aspect;
+    }
+    newY = cropState.startBoxY + cropState.startBoxH - newH;
+  } else if (handle === 'nw') {
+    newW = Math.max(minSize, cropState.startBoxW - dx);
+    newH = aspect > 0 ? (newW / aspect) : Math.max(minSize, cropState.startBoxH - dy);
+    if (newX + cropState.startBoxW - newW < 0) {
+      newW = newX + cropState.startBoxW;
+      if (aspect > 0) newH = newW / aspect;
+    }
+    if (cropState.startBoxY + cropState.startBoxH - newH < 0) {
+      newH = cropState.startBoxY + cropState.startBoxH;
+      if (aspect > 0) newW = newH * aspect;
+    }
+    newX = cropState.startBoxX + cropState.startBoxW - newW;
+    newY = cropState.startBoxY + cropState.startBoxH - newH;
+  } else if (handle === 'e') {
+    newW = Math.max(minSize, cropState.startBoxW + dx);
+    if (aspect > 0) {
+      newH = newW / aspect;
+      newY = cropState.startBoxY + (cropState.startBoxH - newH) / 2;
+    }
+    if (newX + newW > cropState.displayWidth) {
+      newW = cropState.displayWidth - newX;
+      if (aspect > 0) {
+        newH = newW / aspect;
+        newY = cropState.startBoxY + (cropState.startBoxH - newH) / 2;
+      }
+    }
+  } else if (handle === 'w') {
+    newW = Math.max(minSize, cropState.startBoxW - dx);
+    newX = cropState.startBoxX + cropState.startBoxW - newW;
+    if (aspect > 0) {
+      newH = newW / aspect;
+      newY = cropState.startBoxY + (cropState.startBoxH - newH) / 2;
+    }
+    if (newX < 0) {
+      newX = 0;
+      newW = cropState.startBoxX + cropState.startBoxW;
+      if (aspect > 0) {
+        newH = newW / aspect;
+        newY = cropState.startBoxY + (cropState.startBoxH - newH) / 2;
+      }
+    }
+  } else if (handle === 's') {
+    newH = Math.max(minSize, cropState.startBoxH + dy);
+    if (aspect > 0) {
+      newW = newH * aspect;
+      newX = cropState.startBoxX + (cropState.startBoxW - newW) / 2;
+    }
+    if (newY + newH > cropState.displayHeight) {
+      newH = cropState.displayHeight - newY;
+      if (aspect > 0) {
+        newW = newH * aspect;
+        newX = cropState.startBoxX + (cropState.startBoxW - newW) / 2;
+      }
+    }
+  } else if (handle === 'n') {
+    newH = Math.max(minSize, cropState.startBoxH - dy);
+    newY = cropState.startBoxY + cropState.startBoxH - newH;
+    if (aspect > 0) {
+      newW = newH * aspect;
+      newX = cropState.startBoxX + (cropState.startBoxW - newW) / 2;
+    }
+    if (newY < 0) {
+      newY = 0;
+      newH = cropState.startBoxY + cropState.startBoxH;
+      if (aspect > 0) {
+        newW = newH * aspect;
+        newX = cropState.startBoxX + (cropState.startBoxW - newW) / 2;
+      }
+    }
+  }
+
+  // Final sanity clamp within display bounds
+  cropState.boxX = Math.max(0, Math.min(cropState.displayWidth - minSize, newX));
+  cropState.boxY = Math.max(0, Math.min(cropState.displayHeight - minSize, newY));
+  cropState.boxW = Math.max(minSize, Math.min(cropState.displayWidth - cropState.boxX, newW));
+  cropState.boxH = Math.max(minSize, Math.min(cropState.displayHeight - cropState.boxY, newH));
+}
+
+// Setup Cropper Event Listeners
+function setupCropperEvents() {
+  const box = elements.cropBox;
+  if (!box) return;
+
+  // Pointer Down on Crop Box or Handle
+  const onPointerDown = (e) => {
+    const clientX = e.clientX ?? e.touches?.[0]?.clientX;
+    const clientY = e.clientY ?? e.touches?.[0]?.clientY;
+    if (clientX === undefined || clientY === undefined) return;
+
+    const handle = e.target.getAttribute('data-handle');
+    if (handle) {
+      cropState.isResizing = true;
+      cropState.activeHandle = handle;
+    } else if (e.target.closest('#cropBox')) {
+      cropState.isDragging = true;
+    } else {
+      return;
+    }
+
+    cropState.startX = clientX;
+    cropState.startY = clientY;
+    cropState.startBoxX = cropState.boxX;
+    cropState.startBoxY = cropState.boxY;
+    cropState.startBoxW = cropState.boxW;
+    cropState.startBoxH = cropState.boxH;
+
+    e.preventDefault();
+  };
+
+  box.addEventListener('mousedown', onPointerDown);
+  box.addEventListener('touchstart', onPointerDown, { passive: false });
+
+  // Pointer Move on Window
+  const onPointerMove = (e) => {
+    if (!cropState.isDragging && !cropState.isResizing) return;
+
+    const clientX = e.clientX ?? e.touches?.[0]?.clientX;
+    const clientY = e.clientY ?? e.touches?.[0]?.clientY;
+    if (clientX === undefined || clientY === undefined) return;
+
+    const dx = clientX - cropState.startX;
+    const dy = clientY - cropState.startY;
+
+    if (cropState.isDragging) {
+      cropState.boxX = Math.max(0, Math.min(cropState.displayWidth - cropState.boxW, cropState.startBoxX + dx));
+      cropState.boxY = Math.max(0, Math.min(cropState.displayHeight - cropState.boxH, cropState.startBoxY + dy));
+      updateCropBoxDOM();
+      updateCropPreview();
+    } else if (cropState.isResizing) {
+      handleBoxResize(cropState.activeHandle, dx, dy);
+      updateCropBoxDOM();
+      updateCropPreview();
+    }
+
+    e.preventDefault();
+  };
+
+  window.addEventListener('mousemove', onPointerMove);
+  window.addEventListener('touchmove', onPointerMove, { passive: false });
+
+  // Pointer Up
+  const onPointerUp = () => {
+    if (cropState.isDragging || cropState.isResizing) {
+      cropState.isDragging = false;
+      cropState.isResizing = false;
+      cropState.activeHandle = null;
+    }
+  };
+
+  window.addEventListener('mouseup', onPointerUp);
+  window.addEventListener('touchend', onPointerUp);
+
+  // Aspect Ratio Buttons
+  document.querySelectorAll('.aspect-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.aspect-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const val = parseFloat(btn.getAttribute('data-aspect'));
+      cropState.aspect = val;
+
+      if (val > 0) {
+        // Fit and center the crop box with the target aspect ratio
+        const maxW = cropState.displayWidth * 0.9;
+        const maxH = cropState.displayHeight * 0.9;
+        let targetW, targetH;
+
+        if (maxW / val <= maxH) {
+          targetW = maxW;
+          targetH = targetW / val;
+        } else {
+          targetH = maxH;
+          targetW = targetH * val;
+        }
+
+        cropState.boxW = targetW;
+        cropState.boxH = targetH;
+        cropState.boxX = (cropState.displayWidth - targetW) / 2;
+        cropState.boxY = (cropState.displayHeight - targetH) / 2;
+      }
+      updateCropBoxDOM();
+      updateCropPreview();
+    });
+  });
+
+  // Max Square Button
+  if (elements.cropCenterSquareBtn) {
+    elements.cropCenterSquareBtn.addEventListener('click', () => {
+      cropState.aspect = 1.0;
+      document.querySelectorAll('.aspect-btn').forEach(b => {
+        b.classList.toggle('active', b.getAttribute('data-aspect') === '1');
+      });
+      const size = Math.min(cropState.displayWidth, cropState.displayHeight);
+      cropState.boxW = size;
+      cropState.boxH = size;
+      cropState.boxX = (cropState.displayWidth - size) / 2;
+      cropState.boxY = (cropState.displayHeight - size) / 2;
+      updateCropBoxDOM();
+      updateCropPreview();
+    });
+  }
+
+  // Full Frame / Reset Button
+  if (elements.cropResetBtn) {
+    elements.cropResetBtn.addEventListener('click', () => {
+      cropState.aspect = 0;
+      document.querySelectorAll('.aspect-btn').forEach(b => {
+        b.classList.toggle('active', b.getAttribute('data-aspect') === '0');
+      });
+      cropState.boxX = 0;
+      cropState.boxY = 0;
+      cropState.boxW = cropState.displayWidth;
+      cropState.boxH = cropState.displayHeight;
+      updateCropBoxDOM();
+      updateCropPreview();
+    });
+  }
+
+  // Revert to Original Uncropped Image
+  if (elements.cropRevertBtn) {
+    elements.cropRevertBtn.addEventListener('click', () => {
+      const sec = state.sections.find(s => s.id === cropState.activeVerseId);
+      if (sec && sec.rawImageUrl) {
+        sec.imageUrl = sec.rawImageUrl;
+        sec.isCropped = false;
+        renderCards();
+        elements.cropModal.classList.remove('active');
+        showToast(`↺ Verse ${sec.title} reverted to original uncropped image.`, 'info');
+      }
+    });
+  }
+
+  // Cancel Button & Close
+  if (elements.cropCancelBtn) {
+    elements.cropCancelBtn.addEventListener('click', () => {
+      elements.cropModal.classList.remove('active');
+    });
+  }
+  if (elements.cropModalClose) {
+    elements.cropModalClose.addEventListener('click', () => {
+      elements.cropModal.classList.remove('active');
+    });
+  }
+
+  // Apply Crop (Memory / Card UI only)
+  if (elements.cropApplyBtn) {
+    elements.cropApplyBtn.addEventListener('click', async () => {
+      const sec = state.sections.find(s => s.id === cropState.activeVerseId);
+      if (!sec) return;
+
+      elements.cropApplyBtn.disabled = true;
+      elements.cropApplyBtn.innerHTML = '<span>⏳</span> Cropping...';
+
+      try {
+        const cropped = await getCroppedDataUrl();
+        if (cropped) {
+          sec.imageUrl = cropped.dataUrl;
+          sec.fileSize = cropped.compressedSize;
+          sec.imageWidth = cropped.width;
+          sec.imageHeight = cropped.height;
+          sec.aspectRatio = cropped.aspectRatio;
+          sec.isCropped = true;
+          sec.status = 'generated';
+
+          renderCards();
+          updateStats();
+          elements.cropModal.classList.remove('active');
+          showToast(`✂️ Verse ${sec.title} cropped (${formatBytes(sec.fileSize)})! Click Save to write to disk.`, 'success');
+        }
+      } catch (err) {
+        showToast('Crop failed: ' + err.message, 'error');
+      } finally {
+        elements.cropApplyBtn.disabled = false;
+        elements.cropApplyBtn.innerHTML = '<span>✂️</span> Apply Crop';
+      }
+    });
+  }
+
+  // Crop & Save directly to local repo
+  if (elements.cropSaveBtn) {
+    elements.cropSaveBtn.addEventListener('click', async () => {
+      const sec = state.sections.find(s => s.id === cropState.activeVerseId);
+      if (!sec) return;
+
+      elements.cropSaveBtn.disabled = true;
+      elements.cropSaveBtn.innerHTML = '<span>⏳</span> Saving...';
+
+      try {
+        const cropped = await getCroppedDataUrl();
+        if (cropped) {
+          sec.imageUrl = cropped.dataUrl;
+          sec.fileSize = cropped.compressedSize;
+          sec.imageWidth = cropped.width;
+          sec.imageHeight = cropped.height;
+          sec.aspectRatio = cropped.aspectRatio;
+          sec.isCropped = true;
+
+          elements.cropModal.classList.remove('active');
+          await saveImageToDisk(sec.id);
+          showToast(`💾 Verse ${sec.title} cropped and saved to repo!`, 'success');
+        }
+      } catch (err) {
+        showToast('Crop and save failed: ' + err.message, 'error');
+      } finally {
+        elements.cropSaveBtn.disabled = false;
+        elements.cropSaveBtn.innerHTML = '<span>💾</span> Crop & Save to Repo';
+      }
+    });
+  }
 }
 
 // Embedded sample JSON for offline/standalone use

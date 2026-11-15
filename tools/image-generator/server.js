@@ -84,6 +84,61 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Get Images in a Subfolder
+  if (req.method === 'GET' && pathname === '/api/folder-images') {
+    const folder = parsedUrl.searchParams.get('folder') || '';
+    const safeFolder = folder.replace(/[^a-zA-Z0-9_-]/g, '');
+    const targetDir = path.join(IMAGES_BASE, safeFolder);
+    const images = [];
+    const gitStatuses = {};
+    let uncommittedCount = 0;
+
+    if (safeFolder && fs.existsSync(targetDir) && fs.statSync(targetDir).isDirectory()) {
+      try {
+        const relDir = path.join('assets/content/images', safeFolder);
+        const out = execSync(`git status --porcelain "${relDir}"`, { cwd: BASE_DIR }).toString();
+        for (const line of out.split('\n')) {
+          const trimmed = line.trimEnd();
+          if (trimmed.length >= 4) {
+            const code = trimmed.slice(0, 2).trim();
+            const filePath = trimmed.slice(3).trim();
+            const fname = path.basename(filePath);
+            gitStatuses[fname] = code;
+          }
+        }
+      } catch (e) {}
+
+      const files = fs.readdirSync(targetDir, { withFileTypes: true });
+      for (const f of files) {
+        if (f.isFile() && /\.(jpg|jpeg|png|webp)$/i.test(f.name)) {
+          const stats = fs.statSync(path.join(targetDir, f.name));
+          const code = gitStatuses[f.name] || 'clean';
+          const isCommitted = (code === 'clean');
+          if (!isCommitted) uncommittedCount++;
+          images.push({
+            filename: f.name,
+            size: stats.size,
+            modified: Math.round(stats.mtimeMs),
+            isCommitted,
+            gitStatus: isCommitted ? 'committed' : 'uncommitted',
+            gitCode: code
+          });
+        }
+      }
+      images.sort((a, b) => a.filename.localeCompare(b.filename, undefined, { numeric: true, sensitivity: 'base' }));
+    }
+
+    sendJson(res, {
+      folder: safeFolder,
+      exists: safeFolder ? fs.existsSync(targetDir) : false,
+      images,
+      totalCount: images.length,
+      uncommittedCount,
+      committedCount: images.length - uncommittedCount
+    });
+    return;
+  }
+
   // POST APIs
   if (req.method === 'POST') {
     let bodyChunks = [];
@@ -163,12 +218,67 @@ const server = http.createServer((req, res) => {
         const safeFolder = (data.folder || '').replace(/[^a-zA-Z0-9_-]/g, '');
         const targetDir = path.join(IMAGES_BASE, safeFolder);
         const results = {};
+        const gitStatuses = {};
+
+        if (safeFolder && fs.existsSync(targetDir)) {
+          try {
+            const relDir = path.join('assets/content/images', safeFolder);
+            const out = execSync(`git status --porcelain "${relDir}"`, { cwd: BASE_DIR }).toString();
+            for (const line of out.split('\n')) {
+              const trimmed = line.trimEnd();
+              if (trimmed.length >= 4) {
+                const code = trimmed.slice(0, 2).trim();
+                const filePath = trimmed.slice(3).trim();
+                const fname = path.basename(filePath);
+                gitStatuses[fname] = code;
+              }
+            }
+          } catch (e) {}
+        }
+
         for (const fname of (data.filenames || [])) {
           let safeFname = fname.replace(/[^a-zA-Z0-9_.-]/g, '');
           if (!/\.(jpg|jpeg|png|webp)$/i.test(safeFname)) safeFname += '.jpg';
-          results[fname] = fs.existsSync(path.join(targetDir, safeFname));
+          const p = path.join(targetDir, safeFname);
+          const exists = fs.existsSync(p);
+          const code = gitStatuses[safeFname] || 'clean';
+          const isCommitted = (code === 'clean');
+          let size = 0;
+          let modified = 0;
+          if (exists) {
+            try {
+              const stats = fs.statSync(p);
+              size = stats.size;
+              modified = Math.round(stats.mtimeMs);
+            } catch (e) {}
+          }
+          results[fname] = {
+            exists,
+            isCommitted: exists ? isCommitted : false,
+            gitStatus: exists ? (isCommitted ? 'committed' : 'uncommitted') : 'none',
+            gitCode: exists ? code : '',
+            size,
+            modified
+          };
         }
         return sendJson(res, { exists: results });
+      }
+
+      if (pathname === '/api/delete-image') {
+        const safeFolder = (data.folder || '').replace(/[^a-zA-Z0-9_-]/g, '');
+        const safeFilename = (data.filename || '').replace(/[^a-zA-Z0-9_.-]/g, '');
+        const targetPath = path.join(IMAGES_BASE, safeFolder, safeFilename);
+
+        if (fs.existsSync(targetPath) && fs.statSync(targetPath).isFile()) {
+          try {
+            fs.unlinkSync(targetPath);
+            return sendJson(res, { success: true, deleted: safeFilename });
+          } catch (err) {
+            return sendJson(res, { error: err.message }, 500);
+          }
+        } else {
+          return sendJson(res, { success: false, message: 'File not found' }, 404);
+        }
       }
 
       if (pathname === '/api/git-commit') {
