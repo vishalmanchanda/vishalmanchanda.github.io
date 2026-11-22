@@ -288,6 +288,36 @@ class ImageStudioHandler(SimpleHTTPRequestHandler):
                 self._send_json({"success": False, "message": "File not found"}, status=404)
             return
 
+        if path == "/api/rename-image":
+            folder = data.get("folder", "").strip()
+            old_filename = data.get("oldFilename", "").strip()
+            new_filename = data.get("newFilename", "").strip()
+            safe_folder = "".join(c for c in folder if c.isalnum() or c in ("-", "_")).strip()
+            safe_old = "".join(c for c in old_filename if c.isalnum() or c in ("-", "_", ".")).strip()
+            safe_new = "".join(c for c in new_filename if c.isalnum() or c in ("-", "_", ".")).strip()
+
+            if not safe_folder or not safe_old or not safe_new:
+                self._send_json({"error": "Missing or invalid folder or filenames"}, status=400)
+                return
+
+            old_path = IMAGES_BASE / safe_folder / safe_old
+            new_path = IMAGES_BASE / safe_folder / safe_new
+
+            if not old_path.exists() or not old_path.is_file():
+                self._send_json({"success": True, "renamedOnDisk": False, "message": "Source file not on disk (renamed in memory)"})
+                return
+
+            if new_path.exists() and new_path != old_path:
+                self._send_json({"error": f"Target file '{safe_new}' already exists on disk"}, status=409)
+                return
+
+            try:
+                old_path.rename(new_path)
+                self._send_json({"success": True, "renamedOnDisk": True, "oldFilename": safe_old, "newFilename": safe_new})
+            except Exception as e:
+                self._send_json({"error": f"Failed to rename file on disk: {e}"}, status=500)
+            return
+
         if path == "/api/create-folder":
             folder = data.get("folder", "").strip()
             safe_folder = "".join(c for c in folder if c.isalnum() or c in ("-", "_")).strip()

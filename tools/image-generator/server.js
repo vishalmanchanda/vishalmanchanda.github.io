@@ -306,6 +306,34 @@ const server = http.createServer((req, res) => {
         }
       }
 
+      if (pathname === '/api/rename-image') {
+        const safeFolder = (data.folder || '').replace(/[^a-zA-Z0-9_-]/g, '');
+        const safeOld = (data.oldFilename || '').replace(/[^a-zA-Z0-9_.-]/g, '');
+        const safeNew = (data.newFilename || '').replace(/[^a-zA-Z0-9_.-]/g, '');
+
+        if (!safeFolder || !safeOld || !safeNew) {
+          return sendJson(res, { error: 'Missing or invalid folder or filenames' }, 400);
+        }
+
+        const oldPath = path.join(IMAGES_BASE, safeFolder, safeOld);
+        const newPath = path.join(IMAGES_BASE, safeFolder, safeNew);
+
+        if (!fs.existsSync(oldPath) || !fs.statSync(oldPath).isFile()) {
+          return sendJson(res, { success: true, renamedOnDisk: false, message: 'Source file not on disk (renamed in memory)' });
+        }
+
+        if (fs.existsSync(newPath) && newPath !== oldPath) {
+          return sendJson(res, { error: `Target file '${safeNew}' already exists on disk` }, 409);
+        }
+
+        try {
+          fs.renameSync(oldPath, newPath);
+          return sendJson(res, { success: true, renamedOnDisk: true, oldFilename: safeOld, newFilename: safeNew });
+        } catch (err) {
+          return sendJson(res, { error: `Failed to rename on disk: ${err.message}` }, 500);
+        }
+      }
+
       if (pathname === '/api/create-folder') {
         const safeFolder = (data.folder || '').replace(/[^a-zA-Z0-9_-]/g, '');
         if (!safeFolder) return sendJson(res, { error: 'Invalid folder name' }, 400);

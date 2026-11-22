@@ -514,6 +514,135 @@ window.editVerseTitle = function(id) {
   renderCards();
 };
 
+// Edit / Change Image Filename directly
+window.editImageFilename = async function(id) {
+  const sec = state.sections.find(s => s.id === id);
+  if (!sec) return;
+
+  const currentName = sec.filename || titleToFilename(sec.title);
+  const promptMsg = `Change image filename for Verse ${sec.title}:\n\n` +
+    `Current: ${currentName}\n` +
+    `Path: assets/content/images/${state.targetFolder}/${currentName}\n\n` +
+    `Enter new image filename (e.g. 1-1-1.jpg, cover.jpg, or custom-name):`;
+
+  const input = prompt(promptMsg, currentName);
+  if (input === null) return; // user cancelled
+
+  let clean = input.trim();
+  if (!clean) {
+    showToast('Image filename cannot be empty', 'error');
+    return;
+  }
+
+  // If user didn't specify extension, append .jpg
+  if (!/\.(jpg|jpeg|png|webp)$/i.test(clean)) {
+    clean = `${clean}.jpg`;
+  }
+
+  // Sanitize illegal characters
+  clean = clean.replace(/[^a-zA-Z0-9_.-]/g, '-').replace(/-+/g, '-');
+
+  if (clean.toLowerCase() === currentName.toLowerCase()) {
+    showToast(`Filename is already "${clean}"`, 'info');
+    return;
+  }
+
+  // Check duplicate filename in current sections
+  const duplicate = state.sections.find(s => s.id !== id && s.filename && s.filename.toLowerCase() === clean.toLowerCase());
+  if (duplicate) {
+    if (!confirm(`Warning: Another card (Verse ${duplicate.title}) already uses "${clean}". Proceed anyway?`)) {
+      return;
+    }
+  }
+
+  const oldFilename = currentName;
+  let renamedOnDisk = false;
+
+  // If local server is connected and the image has been saved to disk or loaded from disk
+  if (state.serverConnected && (sec.status === 'saved' || sec.status === 'uncommitted' || (sec.imageUrl && !sec.imageUrl.startsWith('data:')))) {
+    try {
+      const res = await fetch('/api/rename-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          folder: state.targetFolder,
+          oldFilename: oldFilename,
+          newFilename: clean
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.renamedOnDisk) {
+          renamedOnDisk = true;
+        }
+      } else if (res.status === 409) {
+        const data = await res.json();
+        showToast(data.error || 'A file with this name already exists on disk', 'error');
+        return;
+      } else if (res.status === 404 && sec.imageUrl) {
+        // Fallback for older running server instance: download and re-save under new name
+        try {
+          const imgRes = await fetch(sec.imageUrl);
+          if (imgRes.ok) {
+            const blob = await imgRes.blob();
+            const reader = new FileReader();
+            reader.readAsDataURL(blob);
+            await new Promise(r => reader.onloadend = r);
+            const base64 = reader.result;
+
+            await fetch('/api/save-image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                folder: state.targetFolder,
+                filename: clean,
+                imageData: base64
+              })
+            });
+
+            await fetch('/api/delete-image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                folder: state.targetFolder,
+                filename: oldFilename
+              })
+            });
+            renamedOnDisk = true;
+          }
+        } catch (fbErr) {
+          console.warn('Fallback rename note:', fbErr);
+        }
+      }
+    } catch (e) {
+      console.warn('Disk rename error:', e);
+    }
+  }
+
+  sec.filename = clean;
+
+  // Update image URLs if they were pointing to the old filename on disk
+  if (sec.imageUrl && typeof sec.imageUrl === 'string') {
+    if (sec.imageUrl.includes(oldFilename)) {
+      sec.imageUrl = sec.imageUrl.replace(oldFilename, clean);
+    } else if (renamedOnDisk) {
+      sec.imageUrl = `/assets/content/images/${state.targetFolder}/${clean}?t=${Date.now()}`;
+    }
+  }
+  if (sec.rawImageUrl && typeof sec.rawImageUrl === 'string' && sec.rawImageUrl.includes(oldFilename)) {
+    sec.rawImageUrl = sec.rawImageUrl.replace(oldFilename, clean);
+  }
+
+  renderCards();
+
+  if (renamedOnDisk) {
+    showToast(`🏷️ Renamed image to "${clean}" on disk & in cards`, 'success');
+  } else {
+    showToast(`🏷️ Target filename changed to "${clean}"`, 'success');
+  }
+};
+
 // Delete Card & Optional Disk Image
 window.deleteVerseCard = async function(id) {
   const sec = state.sections.find(s => s.id === id);
@@ -1253,7 +1382,10 @@ function renderCards() {
         <div class="verse-identity">
           <span class="verse-number">Verse ${sec.title}</span>
           <button class="card-title-btn" onclick="event.stopPropagation(); editVerseTitle('${sec.id}')" title="Rename Verse Title">✏️</button>
-          <span class="filename-badge" title="Target file path: ${fullPath}">${sec.filename}</span>
+          <span class="filename-badge clickable-filename" onclick="event.stopPropagation(); editImageFilename('${sec.id}')" title="Click to rename image file (current: ${sec.filename})">
+            🏷️ ${sec.filename} <span class="edit-pencil">✏️</span>
+          </span>
+          <button class="filename-edit-btn" onclick="event.stopPropagation(); editImageFilename('${sec.id}')" title="Change Image Filename">Rename</button>
           ${isUncommitted ? `<span class="uncommitted-disk-badge" title="Latest local disk file (uncommitted changes in git)">⚡ Uncommitted</span>` : ''}
         </div>
         <div class="card-header-actions">
@@ -1271,6 +1403,7 @@ function renderCards() {
              <div class="hover-full-indicator">👁️ Full uncropped view</div>
              <div class="image-overlay-actions">
                <button class="overlay-btn" title="Zoom Preview" onclick="event.stopPropagation(); openPreviewModal('${sec.id}')">🔍</button>
+               <button class="overlay-btn" title="Rename Image Filename (${sec.filename})" onclick="event.stopPropagation(); editImageFilename('${sec.id}')">🏷️</button>
                <button class="overlay-btn" title="Crop & Adjust Frame" onclick="event.stopPropagation(); openCropModal('${sec.id}')">✂️</button>
                <button class="overlay-btn" title="Copy Image to Clipboard" onclick="event.stopPropagation(); copyImageForVerse('${sec.id}')">📋</button>
                <button class="overlay-btn" title="Download Image" onclick="event.stopPropagation(); downloadSingleImage('${sec.id}')">⬇️</button>
@@ -1326,6 +1459,9 @@ function renderCards() {
         <div class="btn-group-inline" style="justify-content: flex-end; gap: 5px;">
           <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); pasteImageForVerse('${sec.id}')" title="Paste image from clipboard (Cmd+V)">
             📥 Paste
+          </button>
+          <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); editImageFilename('${sec.id}')" title="Change name of this image file">
+            🏷️ Rename
           </button>
           ${sec.imageUrl ? `
             <button class="btn btn-outline btn-sm crop-btn" onclick="event.stopPropagation(); openCropModal('${sec.id}')" title="Crop & adjust image frame to square or custom ratio">
@@ -1928,7 +2064,7 @@ window.openPreviewModal = function(id) {
   if (!sec || !sec.imageUrl) return;
 
   elements.previewModalImg.src = sec.imageUrl;
-  elements.previewModalTitle.textContent = `Verse ${sec.title} — ${sec.filename}`;
+  elements.previewModalTitle.innerHTML = `Verse ${sec.title} &mdash; <span style="font-family: monospace; color: var(--accent-blue);">${sec.filename}</span> <button class="btn btn-outline btn-sm" style="margin-left: 10px; padding: 2px 8px; font-size: 11px;" onclick="editImageFilename('${sec.id}'); elements.previewModalClose.click();">🏷️ Rename</button>`;
   elements.previewModal.classList.add('active');
 };
 

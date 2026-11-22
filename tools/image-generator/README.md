@@ -57,13 +57,19 @@ Then open your browser at:
 - **Card Controls**: Rename any title with **`✏️`** (which updates its target filename) or delete with **`🗑️`** (with optional disk deletion).
 - **JSON Upload & Parsing**: You can still upload or paste a complete chapter JSON with Sanskrit passages, Hindi meanings, and commentaries whenever you want full textual metadata.
 
-### 2. Strict Naming Convention
-- Converts dots in titles to hyphens:
-  - `"1.1.1"` &rarr; **`1-1-1.jpg`**
-  - `"1.1.2"` &rarr; **`1-1-2.jpg`**
-  - `"2.64"` &rarr; **`2-64.jpg`**
-- Preview each image's destination path directly on each card:
-  `assets/content/images/katha-upanishad_hi/1-1-1.jpg`
+### 2. Strict Naming Convention & Custom Image Renaming
+- **Automatic Dot-to-Hyphen Rule**:
+  - Converts dots in titles to hyphens:
+    - `"1.1.1"` &rarr; **`1-1-1.jpg`**
+    - `"1.1.2"` &rarr; **`1-1-2.jpg`**
+    - `"2.64"` &rarr; **`2-64.jpg`**
+- **🏷️ Custom Image Renaming**:
+  - **Clickable Filename Badge**: Click directly on the `🏷️ <filename>.jpg ✏️` badge or the **`Rename`** button in the card header to rename the image file at any time.
+  - **Hover Overlay & Footer Rename Buttons**: Quick rename triggers in the image hover overlay actions (`🏷️`) and the card footer (`🏷️ Rename`).
+  - **Full Preview Rename**: Rename images directly from the full-screen Zoom Preview modal.
+  - **Real-time Disk Rename (`/api/rename-image`)**: If the image is already saved or exists locally on disk, renaming it in the UI automatically renames the physical file on disk in `assets/content/images/<folder>/` without losing image data or git tracking.
+  - Preview each image's destination path directly on each card:
+    `assets/content/images/<folder>/<filename>.jpg`
 
 ### 3. Smart Vedic Prompt Synthesis
 - Automatically analyzes the Sanskrit shloka, Hindi meaning, and commentary to synthesize vivid visual prompts (e.g., *Sage Uddalaka at the holy Vishvajit fire altar, boy Nachiketa contemplating sacred cows, chariot of the body and mind*).

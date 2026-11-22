@@ -602,6 +602,49 @@ body {
   padding: 2px 7px;
   border-radius: 4px;
   border: 1px solid rgba(56, 189, 248, 0.3);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s ease;
+}
+
+.filename-badge.clickable-filename {
+  cursor: pointer;
+}
+
+.filename-badge.clickable-filename:hover {
+  background: rgba(56, 189, 248, 0.28);
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.35);
+  transform: translateY(-1px);
+}
+
+.filename-badge .edit-pencil {
+  font-size: 10px;
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+
+.filename-badge.clickable-filename:hover .edit-pencil {
+  opacity: 1;
+}
+
+.filename-edit-btn {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: var(--accent-blue);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  line-height: 1.2;
+}
+
+.filename-edit-btn:hover {
+  background: rgba(56, 189, 248, 0.25);
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 6px rgba(56, 189, 248, 0.4);
 }
 
 .status-pill {
