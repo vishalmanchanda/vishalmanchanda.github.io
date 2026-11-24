@@ -31,17 +31,14 @@ REPO_ROOT = SCRIPT_DIR.parent.parent
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "assets" / "content" / "images" / "shrimad-bhagwad-gita"
 DATA_CACHE_FILE = SCRIPT_DIR / "bhagavad_gita_all_verses.json"
 
-# Style Signature for exquisite continuous vector line art (9:16 vertical, Strictly No Text)
+# Style Signature for exquisite vector line art (9:16 vertical, Strictly No Text, Detailed Faces)
 STYLE_PREFIX = (
-    "Exquisite minimalist clean black vector line art illustration, continuous contour line drawing, "
-    "pure visual imagery with zero text, 9:16 vertical portrait composition. "
+    "Detailed clean black vector line art illustration, "
+    "vertical 9:16 portrait composition filling canvas from top to bottom, with beautifully drawn expressive facial features (clearly visible eyes with pupils, eyebrows, nose, mouth, distinct emotions, strictly never blank or faceless), strictly pure visual imagery with zero text: "
 )
 
 STYLE_SUFFIX = (
-    ", pure visual artwork only, strictly no text, no words, no letters, no script, no characters, no labels, no subtitles, no typography, no captions, no quotes, no watermarks, "
-    "beautifully drawn crisp solid black ink outlines with deep spiritual and contextual nuance, "
-    "pure stark solid white background, zero shading, no hatching, no halftone, no colors, no gradients, "
-    "elegant artistic silhouette, coloring book vector line art style."
+    ", crisp solid black ink outlines on pure stark white background, detailed expressive faces with eyes and lips clearly drawn, full vertical composition from top to bottom, no text, no words, no letters, no labels, no shading, no blank mannequin faces, coloring book line art style."
 )
 
 # Visual motifs dictionary for Bhagavad Gita narrative themes (Prioritizing concept/teaching as hero)
@@ -176,23 +173,23 @@ def get_thematic_verse_scene(shloka: dict) -> str:
 
     # 1. Chapter 2: Granular Verse Situations
     if ch == 2:
-        # 2.1 - 2.5: Direct dramatic interaction & grief (Full dramatic view)
+        # 2.1 - 2.10: Dramatic Interaction, Admonition & Dilemma (Vertical 9:16 Full Canvas Framing)
         if v == 1:
-            return "Full dramatic scene: Warrior Arjuna collapsed on the chariot floor in deep grief, head buried in his trembling hands, famed Gandiva bow and quiver fallen on the ground, eyes full of tears, while Lord Krishna looks upon him with profound divine compassion"
+            return "Warrior Arjuna collapsed on one knee at the lower ground in deep despondency, head bowed with clearly drawn weeping face and tears streaming down his cheeks, his famed Gandiva bow fallen on the battlefield ground, while towering above him Lord Krishna stands in serene divine compassion with gentle eyes and right hand extended downward in solace, the ornate chariot wheel and banner rising behind them filling the entire vertical height from ground to sky, detailed expressive faces with eyes, nose, and mouth"
         if v == 2:
-            return "Full dramatic scene: Lord Krishna standing tall in divine majesty, arm outstretched pointing forward like a lightning bolt, sternly rebuking warrior Arjuna to cast off shameful dejection"
+            return "Lord Krishna standing tall in full commanding majesty on the chariot platform, his expressive divine face stern and resolute with piercing eyes, arm outstretched pointing firmly forward like a lightning bolt; below him, warrior Arjuna looking up with wide startled eyes in sudden awakening from a dark swirling cloud of delusion depicted above them, chariot canopy and flags reaching the top of the canvas, detailed expressive faces with clearly drawn eyes and lips"
         if v == 3:
-            return "Full dramatic scene: Lord Krishna with right hand raised high in commanding inspiration, urging warrior Arjuna to arise and conquer unmanly weakness, while Arjuna slowly begins to lift his head in resolve"
+            return "Dynamic heroic vertical surge as warrior Arjuna breaks apart shadowy iron chains of faint-heartedness, gripping his famed Gandiva bow and stepping powerfully upward with fierce resolve and intense warrior expression in his eyes; beside him Lord Krishna raises His hand high in triumphant inspiration with a divine encouraging smile, their commanding figures dynamic and filling the entire vertical frame from top to bottom, detailed expressive faces with clearly drawn eyes, nose, and mouth"
         if v == 4:
-            return "Full dramatic scene: Warrior Arjuna bowing with folded hands in sorrowful dilemma before Lord Krishna, gesturing toward distant noble silhouettes of his revered elders Bhishma and Drona"
+            return "Warrior Arjuna bowing reverently with folded hands, holding out offering lotus flowers of deep reverence toward towering noble silhouettes of his revered elders Bhishma and Drona appearing in the upper celestial sky, unable to pierce them with arrows, with Lord Krishna counseling him beside in solemn understanding"
         if v == 5:
-            return "Full dramatic scene: Warrior Arjuna in solemn contemplation beside Lord Krishna on the chariot, reflecting upon choosing simple alms over kingdoms tainted with the blood of revered teachers"
+            return "The central hero visual is a humble monk's begging bowl filled with pure grain in serene radiant light above, contrasting with a heavy golden crown dripping with dark blood sinking in shadowy depths below, symbolizing righteous conscience chosen over blood-stained kingdoms; Lord Krishna and warrior Arjuna weaved in an upper circular medallion"
         if v in (6, 7):
-            return "Full dramatic scene: Warrior Arjuna kneeling before Lord Krishna with joined palms in humble surrender, declaring himself Krishna's disciple and pleading for guidance in moral paralysis"
+            return "Warrior Arjuna kneeling in complete humility with hands joined in total surrender, offering his life and will as a disciple before Lord Krishna whose divine hands rest upon Arjuna's head in blessing, with radiant spiritual light descending from above"
         if v in (8, 9):
-            return 'Full dramatic scene: Warrior Arjuna speaking with trembling sorrow to Lord Krishna, declaring "I shall not fight", collapsing silent onto the chariot seat as Krishna listens with an all-knowing serene smile'
+            return 'The quiet stillness between two assembled armies: Arjuna seated in silent resolve with lowered head saying "I will not fight", while Lord Krishna stands radiant with a gentle knowing smile playing upon His divine lips, dawn breaking across the battlefield behind them'
         if v == 10:
-            return "Full dramatic scene: Lord Krishna, with a compassionate half-smile playing upon His lips, standing between the two armies prepared to speak the nectar of immortal wisdom to the grieving Arjuna"
+            return "Lord Krishna standing majestically between the two vast silhouetted armies on Kurukshetra, raising His hand in divine discourse, beginning to speak the immortal nectar of the Gita, rays of spiritual light radiating outward to illuminate the grieving Arjuna"
 
         # 2.11 - 2.30: The Eternal Soul (Atman) vs Mortal Body (Teaching is Primary Hero)
         if v == 11:
@@ -337,27 +334,27 @@ def synthesize_lineart_prompt_ai(
     # Prompt instructions for LLM (Situation-Specific Art Director)
     system_instruction = (
         "You are a visionary Vedic art director for a prestigious Bhagavad Gita art gallery "
-        "rendered in MINIMALIST, CONTINUOUS BLACK AND WHITE VECTOR LINE ART (coloring-book contour style).\n"
+        "rendered in DETAILED, CLEAN BLACK AND WHITE VECTOR LINE ART (coloring-book style).\n"
         "YOUR MISSION: Conceive a completely UNIQUE, DISTINCT visual composition specifically "
         "derived from the philosophical teaching, scene narration, or emotional exchange of THIS individual verse.\n\n"
-        "CRITICAL VISUAL HIERARCHY & TEXT CONSTRAINTS:\n"
-        "1. STRICTLY PURE VISUALS ONLY — ZERO TEXT:\n"
-        "   - ABSOLUTELY NO TEXT, NO WORDS, NO LETTERS, NO SCRIPT, NO WORD MEANINGS, NO TRANSLITERATION, NO LABELS, NO WATERMARKS, NO CAPTIONS, NO SUBTITLES, NO CALLIGRAPHY, NO BANNERS.\n"
-        "   - The output illustration must be 100% PURE VISUAL LINE ART. Do not describe or include any written words or word meanings in the scene. Every spiritual concept must be expressed purely through visual symbols, gestures, scenery, and objects.\n"
-        "2. THE TEACHING / CONCEPT / METAPHOR MUST BE THE PRIMARY HERO (70–80% of canvas):\n"
+        "CRITICAL VISUAL HIERARCHY, COMPOSITION & CHARACTER CONSTRAINTS:\n"
+        "1. STRICTLY NEVER DRAW FACELESS OR BLANK HEADS:\n"
+        "   - Every human or divine character (Lord Krishna, warrior Arjuna, Sanjaya, Bhishma, sages) MUST have beautifully drawn, expressive facial features: clearly visible eyes with pupils, eyebrows, nose, mouth, and emotive expressions (e.g. Arjuna weeping with visible tears, Krishna smiling with serene divine authority or sternly commanding with intense piercing eyes).\n"
+        "   - ABSOLUTELY NEVER describe or produce blank, faceless, silhouette-only, or mannequin heads!\n"
+        "2. RADICAL SCENE DIVERSITY — NEVER REPEAT GENERIC CHARIOT SCENES:\n"
+        "   - DO NOT place Krishna and Arjuna seated together in a generic chariot conversation across consecutive verses. Each verse MUST have an unmistakable, distinct composition, angle, action, or symbolic visual metaphor!\n"
+        "   - In interaction verses: Change posture, perspective, scale, and action dramatically (e.g. 2.1 close-up of weeping Arjuna collapsed on the earth with Krishna extending a comforting hand; 2.2 full standing majestic Krishna pointing commandingly with parting storm clouds; 2.3 heroic Arjuna rising with bow in fist, fire in his eyes).\n"
+        "3. THE TEACHING / CONCEPT / METAPHOR MUST BE THE PRIMARY HERO (70–80% of canvas):\n"
         "   - Whenever the verse expounds a philosophical principle, allegory, or metaphor (e.g. Tortoise withdrawing limbs 2.58, boat in a storm 2.67, soul changing clothes 2.22, indestructible soul 2.23, lamp in windless shelter 6.19, ocean absorbing rivers 2.70, lotus untouched by water 5.10, noble hands releasing seeds 2.47, inverted cosmic tree 15.1, senses as galloping horses, etc.):\n"
         "   - THE PICTORIAL METAPHOR/CONCEPT MUST BE THE CENTRAL, DOMINANT HERO VISUAL (occupying 70–80% of the composition).\n"
         "   - CREATIVELY WEAVE Lord Krishna and warrior Arjuna into an ELEGANT CIRCULAR INSET VIGNETTE (corner medallion or subtle foreground observant silhouettes where Krishna gestures toward the vision and Arjuna contemplates), so that the teaching/concept does NOT take a back seat!\n"
-        "3. FULL DRAMATIC VIEW OF KRISHNA & ARJUNA ONLY WHEN INTERACTION-DRIVEN:\n"
-        "   - When the verse depicts direct emotional crisis, personal confrontation, command, prayer, or surrender (e.g. 2.1 Arjuna weeping collapsed on the chariot floor; 2.2–2.3 Krishna standing tall, pointing finger, sternly rebuking and commanding Arjuna to arise; 2.4 Arjuna pleading about Bhishma and Drona; 11.15 Arjuna trembling before Vishwaroopa; 18.66 total surrender).\n"
-        "   - In these verses, depict Lord Krishna (with peacock feather crown, divine serenity) and warrior Arjuna (with Kshatriya armor, bow) in full dynamic dramatic view.\n"
-        "4. SCENE DEPICTION PRIMARY FOR SANJAYA / BATTLEFIELD NARRATION:\n"
-        "   - When Sanjaya is speaking or in Chapter 1 battlefield descriptions (e.g. The two vast armies facing each other, conch shells blowing with radiating sonic lines, chariot stationed between the two armies in neutral ground).\n"
-        "5. CHARACTERS:\n"
-        "   - When Lord Krishna and warrior Arjuna are depicted (whether full view or in an inset vignette), explicitly name them with great dignity and contextual depth. DO NOT specify faceless or blank figures.\n"
-        "6. STYLE CONSTRAINTS:\n"
-        "   - Clean, uncluttered 9:16 vertical portrait composition.\n"
-        "   - Solid continuous black ink vector outlines on pure stark solid white background. Zero shading, zero hatching, zero colors, zero gradients.\n\n"
+        "4. STRICTLY PURE VISUALS ONLY — ZERO TEXT:\n"
+        "   - ABSOLUTELY NO TEXT, NO WORDS, NO LETTERS, NO SCRIPT, NO WORD MEANINGS, NO TRANSLITERATION, NO LABELS, NO WATERMARKS, NO CAPTIONS, NO SUBTITLES, NO CALLIGRAPHY, NO BANNERS.\n"
+        "   - The output illustration must be 100% PURE VISUAL LINE ART. Do not describe or include any written words or word meanings in the scene. Every spiritual concept must be expressed purely through visual symbols, gestures, scenery, and objects.\n"
+        "5. FULL VERTICAL 9:16 CANVAS UTILIZATION:\n"
+        "   - Always compose to fill the vertical 9:16 canvas dynamically from top to bottom. Avoid clustering subjects at the bottom with empty top voids. Connect foreground, middleground, and sky elements dynamically (billowing banners, celestial rays, mountain peaks, or tall standing postures).\n"
+        "6. STYLE:\n"
+        "   - Solid continuous black ink vector outlines on pure stark solid white background. Zero shading, zero hatching, zero colors, zero gradients. Detailed expressive faces with eyes and mouth clearly drawn.\n\n"
         "OUTPUT FORMAT: Output ONLY a 35 to 55 word precise visual scene description in English for the line artist. Strictly visuals only, no text/labels, no preamble, no quotes."
     )
 
@@ -479,7 +476,7 @@ def generate_image_gemini(
                 "contents": [
                     {
                         "parts": [
-                            {"text": f"Generate a 9:16 vertical orientation minimalist continuous contour line art illustration on stark pure white background: {prompt}"}
+                            {"text": f"Generate a 9:16 vertical orientation detailed clean black vector line art coloring book illustration on stark pure white background, with clearly drawn expressive facial features (eyes with pupils, nose, mouth, distinct emotions, strictly never blank or faceless), filling the canvas from top to bottom: {prompt}"}
                         ]
                     }
                 ],
@@ -634,13 +631,61 @@ def process_verse(chapter: int, verse: int, args, gemini_key: str, openai_key: s
     else:
         raise ValueError(f"Unsupported provider: {provider}")
 
-    # 4. Save to Repository
+    # 4. Format & Compress to 9:16 optimized line art
+    try:
+        import io
+        from PIL import Image
+        import numpy as np
+
+        im = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        target_w, target_h = 720, 1280
+        src_w, src_h = im.size
+        src_aspect = src_w / src_h
+        target_aspect = target_w / target_h
+
+        if 0.85 <= src_aspect <= 1.15:
+            scale = target_h / src_h
+            scaled_w = int(src_w * scale)
+            scaled = im.resize((scaled_w, target_h), Image.Resampling.LANCZOS)
+            canvas = Image.new("RGB", (target_w, target_h), (255, 255, 255))
+            offset_x = (target_w - scaled_w) // 2
+            canvas.paste(scaled, (offset_x, 0))
+        elif src_aspect > target_aspect:
+            scale = target_w / src_w
+            scaled_h = int(src_h * scale)
+            scaled = im.resize((target_w, scaled_h), Image.Resampling.LANCZOS)
+            canvas = Image.new("RGB", (target_w, target_h), (255, 255, 255))
+            offset_y = (target_h - scaled_h) // 2
+            canvas.paste(scaled, (0, offset_y))
+        else:
+            scale = target_h / src_h
+            scaled_w = int(src_w * scale)
+            scaled = im.resize((scaled_w, target_h), Image.Resampling.LANCZOS)
+            canvas = Image.new("RGB", (target_w, target_h), (255, 255, 255))
+            offset_x = (target_w - scaled_w) // 2
+            canvas.paste(scaled, (offset_x, 0))
+
+        # Clean background thresholding
+        arr = np.array(canvas)
+        mask = (arr[:, :, 0] > 232) & (arr[:, :, 1] > 232) & (arr[:, :, 2] > 232)
+        arr[mask] = [255, 255, 255]
+        black_mask = (arr[:, :, 0] < 45) & (arr[:, :, 1] < 45) & (arr[:, :, 2] < 45)
+        arr[black_mask] = [0, 0, 0]
+        canvas = Image.fromarray(arr)
+
+        buf = io.BytesIO()
+        canvas.save(buf, format="JPEG", quality=70, optimize=True, progressive=True)
+        img_bytes = buf.getvalue()
+    except Exception as comp_err:
+        pass
+
+    # 5. Save to Repository
     os.makedirs(args.output_dir, exist_ok=True)
     with open(target_path, "wb") as f:
         f.write(img_bytes)
 
     size_kb = len(img_bytes) / 1024
-    print(f"  ✅ Saved 9:16 image: {target_path} ({size_kb:.1f} KB)")
+    print(f"  ✅ Saved compressed 9:16 line art: {target_path} ({size_kb:.1f} KB)")
 
 
 def main():

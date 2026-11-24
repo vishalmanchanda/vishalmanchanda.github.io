@@ -213,6 +213,18 @@ class ImageStudioHandler(SimpleHTTPRequestHandler):
                 else:
                     binary_content = base64.b64decode(image_data)
 
+                # Line-art compression optimization
+                try:
+                    from PIL import Image
+                    import io
+                    im = Image.open(io.BytesIO(binary_content))
+                    if safe_filename.lower().endswith((".jpg", ".jpeg")):
+                        buf = io.BytesIO()
+                        im.convert("RGB").save(buf, format="JPEG", quality=70, optimize=True, progressive=True)
+                        binary_content = buf.getvalue()
+                except Exception:
+                    pass
+
                 with open(target_path, "wb") as f:
                     f.write(binary_content)
 

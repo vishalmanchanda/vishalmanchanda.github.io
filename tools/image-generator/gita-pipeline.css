@@ -568,6 +568,27 @@ body {
   z-index: 2;
 }
 
+.size-badge {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  background: rgba(15, 23, 42, 0.88);
+  color: #10b981;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+}
+
 .overlay-actions-top {
   position: absolute;
   top: 10px;
@@ -602,6 +623,23 @@ body {
   background: var(--accent-gold);
   color: #000;
   transform: scale(1.1);
+}
+
+.overlay-icon-btn.overlay-icon-danger:hover {
+  background: #ef4444 !important;
+  color: #fff !important;
+  border-color: #ef4444 !important;
+}
+
+.btn-danger-outline {
+  border-color: rgba(239, 68, 68, 0.45) !important;
+  color: #f87171 !important;
+}
+
+.btn-danger-outline:hover {
+  background: rgba(239, 68, 68, 0.15) !important;
+  border-color: #ef4444 !important;
+  color: #fca5a5 !important;
 }
 
 /* Image Placeholder */

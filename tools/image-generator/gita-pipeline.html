@@ -49,10 +49,28 @@
 
     <!-- 1. Configuration & Pipeline Trigger Bar -->
     <section class="panel-card">
-      <div class="panel-header">
-        <h2><span>⚙️</span> Pipeline Setup & Batch Control</h2>
-        <div style="font-size: 12px; color: var(--text-secondary);">
-          Target: <code id="targetFolderLabel" style="color: var(--accent-blue); font-family: monospace;">assets/content/images/shrimad-bhagwad-gita/</code>
+      <div class="panel-header" style="flex-wrap: wrap; gap: 12px; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <h2><span>⚙️</span> Pipeline Setup & Batch Control</h2>
+        </div>
+
+        <!-- Easy Folder Selector (Saved in User Preferences) -->
+        <div class="folder-selector-container" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <span style="font-size: 12px; font-weight: 600; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 4px;">
+            <span>📁</span> Target Folder:
+          </span>
+          <div style="position: relative; display: inline-flex; align-items: center; gap: 6px;">
+            <select id="targetFolderSelect" class="form-select form-select-sm" style="font-family: ui-monospace, monospace; font-size: 12px; font-weight: 700; background: rgba(15, 23, 42, 0.9); border: 1px solid var(--accent-blue); color: var(--accent-blue); border-radius: 6px; padding: 4px 10px; cursor: pointer; min-width: 220px;" title="Select destination folder in assets/content/images/">
+              <option value="shrimad-bhagwad-gita-art" selected>📁 shrimad-bhagwad-gita-art</option>
+              <option value="shrimad-bhagwad-gita">📁 shrimad-bhagwad-gita</option>
+              <option value="shrimad-bhagwad-gita-visual">📁 shrimad-bhagwad-gita-visual</option>
+              <option value="__new__">➕ Create New Folder...</option>
+            </select>
+            <button type="button" class="btn btn-outline btn-sm" id="editFolderCustomBtn" title="Type a custom folder path" style="padding: 3px 8px; font-size: 11px;">
+              ✏️ Custom
+            </button>
+          </div>
+          <code id="targetFolderLabel" style="color: var(--text-muted); font-size: 11px; font-family: monospace;">assets/content/images/shrimad-bhagwad-gita-art/</code>
         </div>
       </div>
 
@@ -187,10 +205,38 @@
         <button class="btn btn-secondary btn-sm" id="saveAllApprovedBtn">
           <span>💾</span> Save Approved to Disk
         </button>
+        <button class="btn btn-secondary btn-sm" id="regenerateRoundBtn" title="Regenerate all verses in this round with improved diverse prompts">
+          <span>🔄</span> Regenerate Round
+        </button>
+        <button class="btn btn-outline btn-sm" id="discardRoundBtn" title="Discard current round and restore original saved images">
+          <span>❌</span> Discard & Revert
+        </button>
       </div>
     </section>
 
-    <!-- 3. Chapter Verses Workspace Grid (9:16 Cards) -->
+    <!-- 3. Chapter Verses Progress Overview Map (Above Image Cards) -->
+    <section class="panel-card" style="margin-bottom: 20px;">
+      <div class="panel-header" style="flex-wrap: wrap; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <h2><span>🗺️</span> Chapter Verses Progress Map</h2>
+          <span class="badge" style="background: rgba(99, 102, 241, 0.15); color: var(--accent-blue); font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 600;">Click any verse to jump to card</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--text-secondary);">
+          <div class="map-legend" style="display: flex; gap: 10px; align-items: center; font-size: 11px;">
+            <span style="display: inline-flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #10b981; display: inline-block;"></span> Saved</span>
+            <span style="display: inline-flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; display: inline-block;"></span> In Batch/Review</span>
+            <span style="display: inline-flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #64748b; display: inline-block;"></span> Not Generated</span>
+          </div>
+          <span id="mapStatsText" style="font-weight: 600; color: var(--text-primary);">0 approved • 0 in review • 72 remaining</span>
+        </div>
+      </div>
+
+      <div id="chapterProgressMap" style="display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 0;">
+        <!-- Dynamically populated verse mini chips (1 to 72) -->
+      </div>
+    </section>
+
+    <!-- 4. Chapter Verses Workspace Grid (9:16 Cards) -->
     <section>
       <div class="workspace-controls-bar">
         <div class="workspace-title-group">
@@ -215,20 +261,6 @@
       </div>
       <!-- Hidden file input for direct file upload/paste -->
       <input type="file" id="gitaCardFileInput" accept="image/*" style="display: none;" />
-    </section>
-
-    <!-- 4. Chapter Verses Progress Overview Map -->
-    <section class="panel-card" style="margin-top: 10px;">
-      <div class="panel-header">
-        <h2><span>🗺️</span> Chapter Verses Progress Map</h2>
-        <div style="font-size: 12px; color: var(--text-secondary);">
-          <span id="mapStatsText">0 approved • 0 in review • 72 remaining</span>
-        </div>
-      </div>
-
-      <div id="chapterProgressMap" style="display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0;">
-        <!-- Dynamically populated verse mini chips (1 to 72) -->
-      </div>
     </section>
 
   </main>
@@ -305,9 +337,13 @@
   <!-- Zoom Preview Modal (Full-Size 9:16 View) -->
   <div class="modal-backdrop" id="previewModal">
     <div style="display: flex; flex-direction: column; align-items: center; max-width: 90vw;">
-      <div style="display: flex; justify-content: space-between; width: 100%; padding: 8px 12px; color: #fff;">
+      <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 8px 12px; color: #fff; gap: 10px;">
         <span id="previewModalTitle" style="font-weight: 700; color: var(--accent-gold);"></span>
-        <button class="modal-close" id="closePreviewModalBtn" style="color: #fff;">&times;</button>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button type="button" class="btn btn-outline btn-sm" id="modalCopyImageBtn" style="padding: 4px 10px; font-size: 11px;">📋 Copy Image</button>
+          <button type="button" class="btn btn-outline btn-danger-outline btn-sm" id="modalDeleteImageBtn" style="padding: 4px 10px; font-size: 11px;">🗑️ Delete Image</button>
+          <button class="modal-close" id="closePreviewModalBtn" style="color: #fff;">&times;</button>
+        </div>
       </div>
       <img id="previewModalImg" class="preview-916-img" src="" alt="Full 9:16 Preview" />
     </div>

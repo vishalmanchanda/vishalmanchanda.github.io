@@ -50,7 +50,7 @@ const state = {
   isGenerating: false,
   isPausedForReview: false,
   isDryRun: false,
-  targetFolder: 'shrimad-bhagwad-gita',
+  targetFolder: localStorage.getItem('gita_target_folder') || localStorage.getItem('img_target_folder') || 'shrimad-bhagwad-gita-art',
   skipExisting: true,
   autoSynthesize: true,
   serverConnected: false,
@@ -63,12 +63,13 @@ const state = {
   currentBatch: [],          // Active cards in current round
   approvedVerses: new Set(), // Verses approved by user
   diskFiles: new Set(),      // Filenames confirmed existing on local disk
-  activeVerseId: null        // Active selected verse card ID for keyboard paste (Cmd+V)
+  activeVerseId: null,       // Active selected verse card ID for keyboard paste (Cmd+V)
+  activeZoomVerseId: null    // Active verse ID currently shown in Zoom Modal
 };
 
-// Style constraints for Minimalist B&W Vector Line Art (9:16 Vertical, Strictly No Text)
-const STYLE_PREFIX = 'Exquisite minimalist clean black vector line art illustration, continuous contour line drawing, pure visual imagery with zero text, 9:16 vertical portrait composition. ';
-const STYLE_SUFFIX = ', pure visual artwork only, strictly no text, no words, no letters, no script, no characters, no labels, no subtitles, no typography, no captions, no quotes, no watermarks, beautifully drawn crisp solid black ink outlines with deep spiritual and contextual nuance, pure stark solid white background, zero shading, no hatching, no halftone, no colors, no gradients, elegant artistic silhouette, coloring book vector line art style.';
+// Style constraints for Exquisite B&W Vector Line Art (9:16 Vertical, Strictly No Text, Detailed Faces)
+const STYLE_PREFIX = 'Detailed clean black vector line art illustration, vertical 9:16 portrait composition filling canvas from top to bottom, with beautifully drawn expressive facial features (clearly visible eyes with pupils, eyebrows, nose, mouth, distinct emotions, strictly never blank or faceless), strictly pure visual imagery with zero text: ';
+const STYLE_SUFFIX = ', crisp solid black ink outlines on pure stark white background, detailed expressive faces with eyes and lips clearly drawn, full vertical composition from top to bottom, no text, no words, no letters, no labels, no shading, no blank mannequin faces, coloring book line art style.';
 
 // DOM Elements
 const elements = {
@@ -89,6 +90,10 @@ const elements = {
   imageModelSelect: document.getElementById('imageModelSelect'),
   targetSubfolderInput: document.getElementById('targetSubfolderInput'),
   targetFolderLabel: document.getElementById('targetFolderLabel'),
+  targetFolderSelect: document.getElementById('targetFolderSelect'),
+  editFolderCustomBtn: document.getElementById('editFolderCustomBtn'),
+  modalCopyImageBtn: document.getElementById('modalCopyImageBtn'),
+  modalDeleteImageBtn: document.getElementById('modalDeleteImageBtn'),
   chapterSelect: document.getElementById('chapterSelect'),
   startVerseInput: document.getElementById('startVerseInput'),
   endVerseInput: document.getElementById('endVerseInput'),
@@ -110,6 +115,8 @@ const elements = {
   reviewBannerSub: document.getElementById('reviewBannerSub'),
   approveAllAndContinueBtn: document.getElementById('approveAllAndContinueBtn'),
   saveAllApprovedBtn: document.getElementById('saveAllApprovedBtn'),
+  regenerateRoundBtn: document.getElementById('regenerateRoundBtn'),
+  discardRoundBtn: document.getElementById('discardRoundBtn'),
   currentBatchCount: document.getElementById('currentBatchCount'),
   reviewGrid: document.getElementById('reviewGrid'),
   chapterProgressMap: document.getElementById('chapterProgressMap'),
@@ -227,7 +234,7 @@ function openSettingsModal() {
   elements.geminiApiKeyInput.value = state.apiKey || '';
   elements.textModelSelect.value = state.textModel || 'gemini-3.1-flash-lite';
   elements.imageModelSelect.value = state.imageModel || 'gemini-3.1-flash-image';
-  elements.targetSubfolderInput.value = state.targetFolder || 'shrimad-bhagwad-gita';
+  elements.targetSubfolderInput.value = state.targetFolder || 'shrimad-bhagwad-gita-art';
   elements.keyValidationStatus.textContent = '';
   elements.settingsModal.classList.add('active');
 }
@@ -241,21 +248,82 @@ function saveSettingsFromModal() {
   state.apiKey = newKey;
   state.textModel = elements.textModelSelect.value;
   state.imageModel = elements.imageModelSelect.value;
-  state.targetFolder = elements.targetSubfolderInput.value.trim() || 'shrimad-bhagwad-gita';
+  const newFolder = elements.targetSubfolderInput.value.trim() || 'shrimad-bhagwad-gita-art';
 
   localStorage.setItem('gita_gemini_api_key', newKey);
   localStorage.setItem('img_gemini_key', newKey); // sync with main studio
   localStorage.setItem('gita_text_model', state.textModel);
   localStorage.setItem('gita_image_model', state.imageModel);
-  localStorage.setItem('gita_target_folder', state.targetFolder);
 
-  elements.targetFolderLabel.textContent = `assets/content/images/${state.targetFolder}/`;
   updateKeyBadgeUI();
   closeSettingsModal();
-  showToast('Settings saved successfully', 'success');
+  setTargetFolder(newFolder);
+}
 
-  // Rescan disk images
-  checkDiskImagesForCurrentChapter();
+// User Preference: Folder Selection Manager
+function setTargetFolder(newFolder, notify = true) {
+  const clean = (newFolder || '').replace(/[^a-zA-Z0-9_-]/g, '').trim() || 'shrimad-bhagwad-gita-art';
+  state.targetFolder = clean;
+  localStorage.setItem('gita_target_folder', clean);
+  localStorage.setItem('img_target_folder', clean);
+
+  if (elements.targetFolderLabel) {
+    elements.targetFolderLabel.textContent = `assets/content/images/${clean}/`;
+  }
+  if (elements.targetSubfolderInput) {
+    elements.targetSubfolderInput.value = clean;
+  }
+  if (elements.targetFolderSelect) {
+    let opt = Array.from(elements.targetFolderSelect.options).find(o => o.value === clean);
+    if (!opt) {
+      opt = document.createElement('option');
+      opt.value = clean;
+      opt.textContent = `📁 ${clean}`;
+      elements.targetFolderSelect.insertBefore(opt, elements.targetFolderSelect.firstChild);
+    }
+    elements.targetFolderSelect.value = clean;
+  }
+
+  if (notify) {
+    showToast(`📁 Target folder set to "${clean}" (Saved in preferences)`, 'success');
+  }
+
+  // Rescan disk images & reload cards
+  checkDiskImagesForCurrentChapter().then(() => {
+    loadChapterCards(state.chapter);
+  });
+}
+
+function populateFolderSelectOptions(folders) {
+  if (!elements.targetFolderSelect) return;
+  const current = state.targetFolder;
+  const known = new Set(folders || []);
+  known.add(current);
+  known.add('shrimad-bhagwad-gita-art');
+  known.add('shrimad-bhagwad-gita');
+  known.add('shrimad-bhagwad-gita-visual');
+
+  const sorted = Array.from(known).sort((a, b) => {
+    const aGita = a.includes('gita');
+    const bGita = b.includes('gita');
+    if (aGita && !bGita) return -1;
+    if (!aGita && bGita) return 1;
+    return a.localeCompare(b);
+  });
+
+  elements.targetFolderSelect.innerHTML = '';
+  sorted.forEach(f => {
+    const opt = document.createElement('option');
+    opt.value = f;
+    opt.textContent = `📁 ${f}`;
+    if (f === current) opt.selected = true;
+    elements.targetFolderSelect.appendChild(opt);
+  });
+
+  const customOpt = document.createElement('option');
+  customOpt.value = '__new__';
+  customOpt.textContent = '➕ Create New Folder...';
+  elements.targetFolderSelect.appendChild(customOpt);
 }
 
 // ============================================================================
@@ -270,10 +338,13 @@ async function checkServerStatus() {
       state.serverConnected = true;
       elements.serverBadge.className = 'status-pill connected';
       elements.serverStatusText.textContent = `Local Server Connected (${data.gitBranch || 'master'})`;
+      if (Array.isArray(data.existingFolders)) {
+        populateFolderSelectOptions(data.existingFolders);
+      }
       await checkDiskImagesForCurrentChapter();
       return true;
     }
-  } catch (e) {}
+  } catch (e) { }
 
   state.serverConnected = false;
   elements.serverBadge.className = 'status-pill disconnected';
@@ -283,6 +354,8 @@ async function checkServerStatus() {
 
 async function checkDiskImagesForCurrentChapter() {
   state.diskFiles.clear();
+  state.diskFileSizes = state.diskFileSizes || new Map();
+  state.diskFileSizes.clear();
   if (!state.serverConnected) return;
 
   try {
@@ -291,7 +364,11 @@ async function checkDiskImagesForCurrentChapter() {
       const data = await res.json();
       const images = data.images || [];
       images.forEach(img => {
-        state.diskFiles.add(img.filename.toLowerCase());
+        const lowerName = img.filename.toLowerCase();
+        state.diskFiles.add(lowerName);
+        if (img.size) {
+          state.diskFileSizes.set(lowerName, img.size);
+        }
       });
     }
   } catch (err) {
@@ -330,6 +407,7 @@ async function loadChapterCards(chapter) {
     const filename = `${state.chapter}-${v}.jpg`;
     const isSaved = state.diskFiles.has(filename.toLowerCase());
     const isApproved = state.approvedVerses.has(id);
+    const diskSize = state.diskFileSizes ? state.diskFileSizes.get(filename.toLowerCase()) : null;
     const item = chapterDataMap.get(v);
 
     let sanskrit = item ? (item.text || '') : `अध्याय ${state.chapter}, श्लोक ${v}`;
@@ -355,6 +433,8 @@ async function loadChapterCards(chapter) {
       imageUrl: (isSaved || isApproved) ? `/assets/content/images/${state.targetFolder}/${filename}?_t=${Date.now()}` : null,
       status: (isSaved || isApproved) ? 'saved' : 'blank',
       prompt: '',
+      promptIsDefault: true,
+      fileSize: diskSize || null,
       isSaved: isSaved || isApproved
     };
 
@@ -475,30 +555,30 @@ function getThematicVerseScene(verseObj) {
 
   // 1. Chapter 2: Granular Verse Situations
   if (ch === 2) {
-    // 2.1 - 2.5: Direct dramatic interaction & grief (Full dramatic view)
+    // 2.1 - 2.10: Dramatic Interaction, Admonition & Dilemma (Vertical 9:16 Full Canvas Framing)
     if (v === 1) {
-      return 'Full dramatic scene: Warrior Arjuna collapsed on the chariot floor in deep grief, head buried in his trembling hands, famed Gandiva bow and quiver fallen on the ground, eyes full of tears, while Lord Krishna looks upon him with profound divine compassion';
+      return 'Warrior Arjuna collapsed on one knee at the lower ground in deep despondency, head bowed with clearly drawn weeping face and tears streaming down his cheeks, his famed Gandiva bow fallen on the battlefield ground, while towering above him Lord Krishna stands in serene divine compassion with gentle eyes and right hand extended downward in solace, the ornate chariot wheel and banner rising behind them filling the entire vertical height from ground to sky, detailed expressive faces with eyes, nose, and mouth';
     }
     if (v === 2) {
-      return 'Full dramatic scene: Lord Krishna standing tall in divine majesty, arm outstretched pointing forward like a lightning bolt, sternly rebuking warrior Arjuna to cast off shameful dejection';
+      return 'Lord Krishna standing tall in full commanding majesty on the chariot platform, his expressive divine face stern and resolute with piercing eyes, arm outstretched pointing firmly forward like a lightning bolt; below him, warrior Arjuna looking up with wide startled eyes in sudden awakening from a dark swirling cloud of delusion depicted above them, chariot canopy and flags reaching the top of the canvas, detailed expressive faces with clearly drawn eyes and lips';
     }
     if (v === 3) {
-      return 'Full dramatic scene: Lord Krishna with right hand raised high in commanding inspiration, urging warrior Arjuna to arise and conquer unmanly weakness, while Arjuna slowly begins to lift his head in resolve';
+      return 'Dynamic heroic vertical surge as warrior Arjuna breaks apart shadowy iron chains of faint-heartedness, gripping his famed Gandiva bow and stepping powerfully upward with fierce resolve and intense warrior expression in his eyes; beside him Lord Krishna raises His hand high in triumphant inspiration with a divine encouraging smile, their commanding figures dynamic and filling the entire vertical frame from top to bottom, detailed expressive faces with clearly drawn eyes, nose, and mouth';
     }
     if (v === 4) {
-      return 'Full dramatic scene: Warrior Arjuna bowing with folded hands in sorrowful dilemma before Lord Krishna, gesturing toward distant noble silhouettes of his revered elders Bhishma and Drona';
+      return 'Warrior Arjuna bowing reverently with folded hands, holding out offering lotus flowers of deep reverence toward towering noble silhouettes of his revered elders Bhishma and Drona appearing in the upper celestial sky, unable to pierce them with arrows, with Lord Krishna counseling him beside in solemn understanding';
     }
     if (v === 5) {
-      return 'Full dramatic scene: Warrior Arjuna in solemn contemplation beside Lord Krishna on the chariot, reflecting upon choosing simple alms over kingdoms tainted with the blood of revered teachers';
+      return 'The central hero visual is a humble monk\'s begging bowl filled with pure grain in serene radiant light above, contrasting with a heavy golden crown dripping with dark blood sinking in shadowy depths below, symbolizing righteous conscience chosen over blood-stained kingdoms; Lord Krishna and warrior Arjuna weaved in an upper circular medallion';
     }
     if (v === 6 || v === 7) {
-      return 'Full dramatic scene: Warrior Arjuna kneeling before Lord Krishna with joined palms in humble surrender, declaring himself Krishna\'s disciple and pleading for guidance in moral paralysis';
+      return 'Warrior Arjuna kneeling in complete humility with hands joined in total surrender, offering his life and will as a disciple before Lord Krishna whose divine hands rest upon Arjuna\'s head in blessing, with radiant spiritual light descending from above';
     }
     if (v === 8 || v === 9) {
-      return 'Full dramatic scene: Warrior Arjuna speaking with trembling sorrow to Lord Krishna, declaring "I shall not fight", collapsing silent onto the chariot seat as Krishna listens with an all-knowing serene smile';
+      return 'The quiet stillness between two assembled armies: Arjuna seated in silent resolve with lowered head saying "I will not fight", while Lord Krishna stands radiant with a gentle knowing smile playing upon His divine lips, dawn breaking across the battlefield behind them';
     }
     if (v === 10) {
-      return 'Full dramatic scene: Lord Krishna, with a compassionate half-smile playing upon His lips, standing between the two armies prepared to speak the nectar of immortal wisdom to the grieving Arjuna';
+      return 'Lord Krishna standing majestically between the two vast silhouetted armies on Kurukshetra, raising His hand in divine discourse, beginning to speak the immortal nectar of the Gita, rays of spiritual light radiating outward to illuminate the grieving Arjuna';
     }
 
     // 2.11 - 2.30: The Eternal Soul (Atman) vs Mortal Body (Teaching is Primary Hero)
@@ -686,27 +766,27 @@ async function synthesizeLineArtPrompt(verseObj) {
       'gemini-1.5-flash'
     ].filter((m, idx, arr) => m && arr.indexOf(m) === idx);
 
-    const systemPrompt = `You are a visionary Vedic art director for a prestigious Bhagavad Gita art gallery rendered in MINIMALIST, CONTINUOUS BLACK AND WHITE VECTOR LINE ART (coloring-book contour style).
+    const systemPrompt = `You are a visionary Vedic art director for a prestigious Bhagavad Gita art gallery rendered in DETAILED, CLEAN BLACK AND WHITE VECTOR LINE ART (coloring-book style).
 YOUR MISSION: Conceive a completely UNIQUE, DISTINCT visual composition specifically derived from the philosophical teaching, scene narration, or emotional exchange of THIS individual verse.
 
-CRITICAL VISUAL HIERARCHY & TEXT CONSTRAINTS:
-1. STRICTLY PURE VISUALS ONLY — ZERO TEXT:
-   - ABSOLUTELY NO TEXT, NO WORDS, NO LETTERS, NO SCRIPT, NO WORD MEANINGS, NO TRANSLITERATION, NO LABELS, NO WATERMARKS, NO CAPTIONS, NO SUBTITLES, NO CALLIGRAPHY, NO BANNERS.
-   - The output illustration must be 100% PURE VISUAL LINE ART. Do not describe or include any written words or word meanings in the scene. Every spiritual concept must be expressed purely through visual symbols, gestures, scenery, and objects.
-2. THE TEACHING / CONCEPT / METAPHOR MUST BE THE PRIMARY HERO (70–80% of canvas):
+CRITICAL VISUAL HIERARCHY, COMPOSITION & CHARACTER CONSTRAINTS:
+1. STRICTLY NEVER DRAW FACELESS OR BLANK HEADS:
+   - Every human or divine character (Lord Krishna, warrior Arjuna, Sanjaya, Bhishma, sages) MUST have beautifully drawn, expressive facial features: clearly visible eyes with pupils, eyebrows, nose, mouth, and emotive expressions (e.g. Arjuna weeping with visible tears, Krishna smiling with serene divine authority or sternly commanding with intense piercing eyes).
+   - ABSOLUTELY NEVER describe or produce blank, faceless, silhouette-only, or mannequin heads!
+2. RADICAL SCENE DIVERSITY — NEVER REPEAT GENERIC CHARIOT SCENES:
+   - DO NOT place Krishna and Arjuna seated together in a generic chariot conversation across consecutive verses. Each verse MUST have an unmistakable, distinct composition, angle, action, or symbolic visual metaphor!
+   - In interaction verses: Change posture, perspective, scale, and action dramatically (e.g. 2.1 close-up of weeping Arjuna collapsed on the earth with Krishna extending a comforting hand; 2.2 full standing majestic Krishna pointing commandingly with parting storm clouds; 2.3 heroic Arjuna rising with bow in fist, fire in his eyes).
+3. THE TEACHING / CONCEPT / METAPHOR MUST BE THE PRIMARY HERO (70–80% of canvas):
    - Whenever the verse expounds a philosophical principle, allegory, or metaphor (e.g. Tortoise withdrawing limbs 2.58, boat in a storm 2.67, soul changing clothes 2.22, indestructible soul 2.23, lamp in windless shelter 6.19, ocean absorbing rivers 2.70, lotus untouched by water 5.10, noble hands releasing seeds 2.47, inverted cosmic tree 15.1, senses as galloping horses, etc.):
    - THE PICTORIAL METAPHOR/CONCEPT MUST BE THE CENTRAL, DOMINANT HERO VISUAL (occupying 70–80% of the composition).
    - CREATIVELY WEAVE Lord Krishna and warrior Arjuna into an ELEGANT CIRCULAR INSET VIGNETTE (corner medallion or subtle foreground observant silhouettes where Krishna gestures toward the vision and Arjuna contemplates), so that the teaching/concept does NOT take a back seat!
-3. FULL DRAMATIC VIEW OF KRISHNA & ARJUNA ONLY WHEN INTERACTION-DRIVEN:
-   - When the verse depicts direct emotional crisis, personal confrontation, command, prayer, or surrender (e.g. 2.1 Arjuna weeping collapsed on the chariot floor; 2.2–2.3 Krishna standing tall, pointing finger, sternly rebuking and commanding Arjuna to arise; 2.4 Arjuna pleading about Bhishma and Drona; 11.15 Arjuna trembling before Vishwaroopa; 18.66 total surrender).
-   - In these verses, depict Lord Krishna (with peacock feather crown, divine serenity) and warrior Arjuna (with Kshatriya armor, bow) in full dynamic dramatic view.
-4. SCENE DEPICTION PRIMARY FOR SANJAYA / BATTLEFIELD NARRATION:
-   - When Sanjaya is speaking or in Chapter 1 battlefield descriptions (e.g. The two vast armies facing each other, conch shells blowing with radiating sonic lines, chariot stationed between the two armies in neutral ground).
-5. CHARACTERS:
-   - When Lord Krishna and warrior Arjuna are depicted (whether full view or in an inset vignette), explicitly name them with great dignity and contextual depth. DO NOT specify faceless or blank figures.
-6. STYLE CONSTRAINTS:
-   - Clean, uncluttered 9:16 vertical portrait composition.
-   - Solid continuous black ink vector outlines on pure stark solid white background. Zero shading, zero hatching, zero colors, zero gradients.
+4. STRICTLY PURE VISUALS ONLY — ZERO TEXT:
+   - ABSOLUTELY NO TEXT, NO WORDS, NO LETTERS, NO SCRIPT, NO WORD MEANINGS, NO TRANSLITERATION, NO LABELS, NO WATERMARKS, NO CAPTIONS, NO SUBTITLES, NO CALLIGRAPHY, NO BANNERS.
+   - The output illustration must be 100% PURE VISUAL LINE ART. Do not describe or include any written words or word meanings in the scene. Every spiritual concept must be expressed purely through visual symbols, gestures, scenery, and objects.
+5. FULL VERTICAL 9:16 CANVAS UTILIZATION:
+   - Always compose to fill the vertical 9:16 canvas dynamically from top to bottom. Avoid clustering subjects at the bottom with empty top voids. Connect foreground, middleground, and sky elements dynamically (billowing banners, celestial rays, mountain peaks, or tall standing postures).
+6. STYLE:
+   - Solid continuous black ink vector outlines on pure stark solid white background. Zero shading, zero hatching, zero colors, zero gradients. Detailed expressive faces with eyes and mouth clearly drawn.
 
 OUTPUT FORMAT:
 Output ONLY a 35 to 55 word precise visual scene description in English for the line artist. Strictly visuals only, no text/labels, no preamble, no quotes.`;
@@ -760,7 +840,7 @@ Craft the unique visual line art scene for this verse (STRICTLY PURE VISUALS ONL
 // 6. 9:16 IMAGE GENERATION (LOW-COST & FREE ENGINES WITH AUTO-FALLBACK)
 // ============================================================================
 
-// Canvas formatter to guarantee exact 9:16 portrait ratio on pure white background
+// Canvas formatter to guarantee exact 9:16 portrait ratio on pure white background with aggressive compression
 async function formatImageTo916(imageSrc) {
   return new Promise((resolve) => {
     const img = new Image();
@@ -771,22 +851,34 @@ async function formatImageTo916(imageSrc) {
       const targetH = 1280;
       canvas.width = targetW;
       canvas.height = targetH;
-      const ctx = canvas.getContext('2d');
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
       // Pure solid white background matching minimalist B&W style
       ctx.fillStyle = '#FFFFFF';
       ctx.fillRect(0, 0, targetW, targetH);
 
       const srcAspect = img.width / img.height;
-      const targetAspect = targetW / targetH;
+      const targetAspect = targetW / targetH; // 720 / 1280 = 0.5625
 
       let drawW, drawH, drawX, drawY;
-      if (srcAspect > targetAspect) {
+      // Smart vertical 9:16 framing:
+      // If image is roughly square (aspect ratio between 0.85 and 1.15),
+      // scaling to fit width creates massive 280px empty top/bottom letterbox voids
+      // that push the characters to the bottom and leave 50%+ empty white space.
+      // Instead, scale to fill height so characters command the vertical canvas!
+      if (srcAspect >= 0.85 && srcAspect <= 1.15) {
+        drawH = targetH;
+        drawW = targetH * srcAspect;
+        drawX = (targetW - drawW) / 2;
+        drawY = 0;
+      } else if (srcAspect > targetAspect) {
+        // Wider than 9:16
         drawW = targetW;
         drawH = targetW / srcAspect;
         drawX = 0;
         drawY = (targetH - drawH) / 2;
       } else {
+        // Tall portrait
         drawH = targetH;
         drawW = targetH * srcAspect;
         drawX = (targetW - drawW) / 2;
@@ -794,7 +886,34 @@ async function formatImageTo916(imageSrc) {
       }
 
       ctx.drawImage(img, drawX, drawY, drawW, drawH);
-      resolve(canvas.toDataURL('image/jpeg', 0.92));
+
+      // Clean background thresholding for line art:
+      // Snapping near-white pixels (RGB > 232) to pure 255 eliminates DCT high-frequency noise,
+      // shrinking compressed file size dramatically with ZERO degradation to line art contours.
+      try {
+        const imgData = ctx.getImageData(0, 0, targetW, targetH);
+        const data = imgData.data;
+        const len = data.length;
+        for (let i = 0; i < len; i += 4) {
+          const r = data[i], g = data[i + 1], b = data[i + 2];
+          if (r > 232 && g > 232 && b > 232) {
+            data[i] = 255;
+            data[i + 1] = 255;
+            data[i + 2] = 255;
+          } else if (r < 45 && g < 45 && b < 45) {
+            data[i] = 0;
+            data[i + 1] = 0;
+            data[i + 2] = 0;
+          }
+        }
+        ctx.putImageData(imgData, 0, 0);
+      } catch (e) {
+        console.warn('Canvas thresholding skipped (CORS/security):', e);
+      }
+
+      // Export as high-efficiency JPEG at quality 0.70 (~45KB to ~65KB per 9:16 line art image)
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.70);
+      resolve(dataUrl);
     };
     img.onerror = () => {
       resolve(imageSrc);
@@ -808,7 +927,10 @@ async function generatePuter916Image(prompt) {
   if (!window.puter || !window.puter.ai || !window.puter.ai.txt2img) {
     throw new Error('Puter AI script not ready. Check internet connection.');
   }
-  const cleanPrompt = prompt.replace(/[\n\r]+/g, ' ').slice(0, 750);
+  let cleanPrompt = prompt.replace(/[\n\r]+/g, ' ').slice(0, 850);
+  if (!cleanPrompt.toLowerCase().includes('expressive face') && !cleanPrompt.toLowerCase().includes('eyes')) {
+    cleanPrompt += ', detailed expressive faces with clearly drawn eyes, nose, and mouth, strictly no blank faces, no faceless figures';
+  }
   const imgElement = await window.puter.ai.txt2img(cleanPrompt);
   if (!imgElement || !imgElement.src) {
     throw new Error('Puter AI did not return an image.');
@@ -819,8 +941,12 @@ async function generatePuter916Image(prompt) {
 // 2. Pollinations AI (100% Free, direct 9:16 dimensions)
 async function generatePollinations916Image(prompt) {
   const seed = Math.floor(Math.random() * 10000000);
-  const cleanPrompt = encodeURIComponent(prompt.replace(/[\n\r]+/g, ' ').slice(0, 500));
-  const pollUrl = `https://image.pollinations.ai/prompt/${cleanPrompt}?width=576&height=1024&nologo=true&seed=${seed}`;
+  let enhancedPrompt = prompt.replace(/[\n\r]+/g, ' ');
+  if (!enhancedPrompt.toLowerCase().includes('expressive face') && !enhancedPrompt.toLowerCase().includes('eyes')) {
+    enhancedPrompt += ', detailed expressive faces with clearly drawn eyes, nose, and mouth, strictly no blank faces, no faceless figures';
+  }
+  const cleanPrompt = encodeURIComponent(enhancedPrompt.slice(0, 1000));
+  const pollUrl = `https://image.pollinations.ai/prompt/${cleanPrompt}?width=720&height=1280&nologo=true&seed=${seed}`;
 
   if (state.serverConnected) {
     try {
@@ -875,7 +1001,7 @@ async function generateGeminiFlashImage(prompt) {
         body: JSON.stringify({
           contents: [{
             parts: [{
-              text: `Generate a 9:16 vertical orientation minimalist continuous contour line art illustration on stark pure white background: ${prompt}`
+              text: `Generate a 9:16 vertical orientation detailed clean black vector line art coloring book illustration on stark pure white background, with clearly drawn expressive facial features (eyes with pupils, nose, mouth, distinct emotions, strictly never blank or faceless), filling the canvas from top to bottom: ${prompt}`
             }]
           }],
           generationConfig: {
@@ -1075,10 +1201,15 @@ async function startCurrentRound() {
     elements.progressBarFill.style.width = `${Math.round(((i) / roundCount) * 100)}%`;
     elements.progressPercent.textContent = `${Math.round(((i) / roundCount) * 100)}%`;
 
-    // 1. Synthesize Prompt
-    if (!card.prompt) {
-      card.prompt = await synthesizeLineArtPrompt(card);
-      updateCardPromptInDom(card.id, card.prompt);
+    // 1. Synthesize Prompt (auto-synthesize with Gemini Flash-Lite if key available)
+    if (!card.prompt || (state.autoSynthesize && state.apiKey && card.promptIsDefault)) {
+      try {
+        card.prompt = await synthesizeLineArtPrompt(card);
+        card.promptIsDefault = false;
+        updateCardPromptInDom(card.id, card.prompt);
+      } catch (e) {
+        console.warn('Auto-synthesize prompt note:', e);
+      }
     }
 
     // 2. Skip image generation if already on disk and skipExisting is true
@@ -1105,6 +1236,9 @@ async function startCurrentRound() {
     try {
       const dataUrl = await generate916Image(card.prompt);
       card.imageUrl = dataUrl;
+      if (dataUrl && dataUrl.startsWith('data:')) {
+        card.fileSize = Math.round((dataUrl.length - dataUrl.indexOf(',') - 1) * 0.75);
+      }
       card.status = 'pending_review';
       completedInRound++;
     } catch (err) {
@@ -1237,11 +1371,91 @@ async function approveAllAndContinue() {
   await startCurrentRound();
 }
 
+// Discard current round without saving (revert to disk images)
+async function discardCurrentRound() {
+  if (!state.currentBatch || state.currentBatch.length === 0) return;
+
+  for (const card of state.currentBatch) {
+    const isSaved = state.diskFiles.has(card.filename.toLowerCase());
+    if (isSaved) {
+      card.imageUrl = `/assets/content/images/${state.targetFolder}/${card.filename}?_t=${Date.now()}`;
+      card.status = 'saved';
+    } else {
+      card.imageUrl = null;
+      card.status = 'blank';
+    }
+  }
+
+  state.isGenerating = false;
+  state.isPausedForReview = false;
+  if (elements.humanReviewBanner) elements.humanReviewBanner.classList.remove('active');
+  if (elements.startPipelineBtn) elements.startPipelineBtn.style.display = 'inline-flex';
+  if (elements.pausePipelineBtn) elements.pausePipelineBtn.style.display = 'none';
+
+  renderReviewGrid();
+  renderChapterMap();
+  showToast('Current round discarded. Restored saved disk images.', 'info');
+}
+
+// Regenerate all verses in current round with improved diverse prompts
+async function regenerateCurrentRound() {
+  if (!state.currentBatch || state.currentBatch.length === 0) return;
+
+  state.isGenerating = true;
+  state.isPausedForReview = false;
+  if (elements.humanReviewBanner) elements.humanReviewBanner.classList.remove('active');
+  if (elements.startPipelineBtn) elements.startPipelineBtn.style.display = 'none';
+  if (elements.pausePipelineBtn) elements.pausePipelineBtn.style.display = 'inline-flex';
+  if (elements.progressWrapper) elements.progressWrapper.classList.add('active');
+
+  showToast(`Regenerating ${state.currentBatch.length} verse(s) with fresh detailed-face prompts...`, 'info');
+
+  for (let i = 0; i < state.currentBatch.length; i++) {
+    if (!state.isGenerating) break;
+
+    const card = state.currentBatch[i];
+    card.status = 'generating';
+    renderSingleCard(card.id);
+
+    try {
+      // Re-synthesize fresh prompt
+      card.prompt = await synthesizeLineArtPrompt(card);
+      updateCardPromptInDom(card.id, card.prompt);
+
+      // Generate 9:16 line art image
+      const dataUrl = await generate916Image(card.prompt);
+      card.imageUrl = dataUrl;
+      if (dataUrl && dataUrl.startsWith('data:')) {
+        card.fileSize = Math.round((dataUrl.length - dataUrl.indexOf(',') - 1) * 0.75);
+      }
+      card.status = 'pending_review';
+    } catch (err) {
+      console.error(`Regeneration error on Verse ${card.title}:`, err);
+      card.status = 'error';
+      card.error = err.message;
+      showToast(`Regeneration error on Verse ${card.title}: ${err.message}`, 'error');
+    }
+
+    renderSingleCard(card.id);
+    await new Promise(r => setTimeout(r, 800));
+  }
+
+  state.isGenerating = false;
+  state.isPausedForReview = true;
+  if (elements.humanReviewBanner) elements.humanReviewBanner.classList.add('active');
+  if (elements.pausePipelineBtn) elements.pausePipelineBtn.style.display = 'none';
+  if (elements.startPipelineBtn) elements.startPipelineBtn.style.display = 'inline-flex';
+
+  renderReviewGrid();
+  renderChapterMap();
+  showToast('Round regenerated! Inspect new images below.', 'success');
+}
+
 // ============================================================================
 // 8. CARD ACTIONS (MODIFY PROMPT, REGENERATE, RENAME, SAVE, ZOOM)
 // ============================================================================
 
-window.updateCardPrompt = function(id, newPrompt) {
+window.updateCardPrompt = function (id, newPrompt) {
   const card = findCard(id);
   if (card) {
     card.prompt = newPrompt;
@@ -1249,7 +1463,7 @@ window.updateCardPrompt = function(id, newPrompt) {
   }
 };
 
-window.reSynthesizePromptForCard = async function(id) {
+window.reSynthesizePromptForCard = async function (id) {
   const card = findCard(id);
   if (!card) return;
 
@@ -1259,7 +1473,7 @@ window.reSynthesizePromptForCard = async function(id) {
   showToast(`Prompt re-synthesized!`, 'success');
 };
 
-window.regenerateCardImage = async function(id) {
+window.regenerateCardImage = async function (id) {
   const card = findCard(id);
   if (!card) return;
 
@@ -1285,7 +1499,7 @@ window.regenerateCardImage = async function(id) {
   renderSingleCard(id);
 };
 
-window.renameCardImage = async function(id) {
+window.renameCardImage = async function (id) {
   const card = findCard(id);
   if (!card) return;
 
@@ -1314,13 +1528,85 @@ window.renameCardImage = async function(id) {
       state.diskFiles.delete(oldName.toLowerCase());
       state.diskFiles.add(clean.toLowerCase());
       showToast(`Renamed to ${clean} on disk`, 'success');
-    } catch (e) {}
+    } catch (e) { }
   }
 
   renderSingleCard(id);
 };
 
-window.approveCard = async function(id) {
+// Remove/Delete image from card and disk on confirmation
+window.removeCardImage = async function (id) {
+  setActiveCard(id);
+  const card = findCard(id);
+  if (!card) return;
+
+  if (!card.imageUrl && card.status === 'blank') {
+    showToast(`No image exists for Verse ${card.title}.`, 'info');
+    return;
+  }
+
+  const isSavedOnDisk = state.diskFiles.has(card.filename.toLowerCase());
+  const confirmMsg = isSavedOnDisk
+    ? `⚠️ Permanently delete image for Verse ${card.title} (${card.filename}) from disk?\n\nFolder: assets/content/images/${state.targetFolder}/\nThis action cannot be undone.`
+    : `Remove the generated image for Verse ${card.title}?`;
+
+  if (!confirm(confirmMsg)) {
+    return;
+  }
+
+  // 1. Delete from disk if saved
+  if (isSavedOnDisk) {
+    if (state.serverConnected) {
+      try {
+        const res = await fetch('/api/delete-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            folder: state.targetFolder,
+            filename: card.filename
+          })
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.success) {
+          state.diskFiles.delete(card.filename.toLowerCase());
+          if (state.diskFileSizes) state.diskFileSizes.delete(card.filename.toLowerCase());
+          showToast(`Permanently deleted ${card.filename} from disk.`, 'success');
+        } else {
+          showToast(`Disk deletion error: ${data.error || data.message || 'File not found'}`, 'error');
+          return;
+        }
+      } catch (err) {
+        console.error('Delete from disk error:', err);
+        showToast(`Failed to delete from disk: ${err.message}`, 'error');
+        return;
+      }
+    } else {
+      showToast('Cannot delete from disk: local server is not connected.', 'error');
+      return;
+    }
+  }
+
+  // 2. Clear image in memory and card state
+  card.imageUrl = null;
+  card.fileSize = null;
+  card.status = 'blank';
+  card.isSaved = false;
+  state.approvedVerses.delete(card.id);
+
+  // If currently open in zoom modal, close it
+  if (state.activeZoomVerseId === id && elements.previewModal) {
+    elements.previewModal.classList.remove('active');
+  }
+
+  // 3. Update UI
+  updateFilterCounts();
+  renderSingleCard(card.id);
+  renderChapterMap();
+  showToast(`Image removed for Verse ${card.title}. Verse is ready to generate.`, 'info');
+};
+
+window.approveCard = async function (id) {
   const card = findCard(id);
   if (!card) return;
 
@@ -1336,7 +1622,7 @@ window.approveCard = async function(id) {
   showToast(`Approved Verse ${card.title}!`, 'success');
 };
 
-window.saveCardImageToDisk = async function(id, notify = true) {
+window.saveCardImageToDisk = async function (id, notify = true) {
   const card = findCard(id);
   if (!card || !card.imageUrl) return;
 
@@ -1364,13 +1650,24 @@ window.saveCardImageToDisk = async function(id, notify = true) {
     });
 
     if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (data.bytes) {
+        card.fileSize = data.bytes;
+      } else if (card.imageUrl && card.imageUrl.startsWith('data:')) {
+        card.fileSize = Math.round((card.imageUrl.length - card.imageUrl.indexOf(',') - 1) * 0.75);
+      }
       card.status = 'saved';
-      state.diskFiles.add(card.filename.toLowerCase());
+      const lowerName = card.filename.toLowerCase();
+      state.diskFiles.add(lowerName);
+      if (card.fileSize) {
+        state.diskFileSizes = state.diskFileSizes || new Map();
+        state.diskFileSizes.set(lowerName, card.fileSize);
+      }
       state.approvedVerses.add(id);
       updateFilterCounts();
       renderSingleCard(id);
       renderChapterMap();
-      if (notify) showToast(`💾 Saved ${card.filename} to disk!`, 'success');
+      if (notify) showToast(`💾 Saved ${card.filename} (${formatBytes(card.fileSize)}) to disk!`, 'success');
     } else {
       const err = await res.json();
       showToast(`Save failed: ${err.error}`, 'error');
@@ -1380,13 +1677,95 @@ window.saveCardImageToDisk = async function(id, notify = true) {
   }
 };
 
-window.openZoomModal = function(id) {
+window.openZoomModal = function (id) {
   const card = findCard(id);
   if (!card || !card.imageUrl) return;
 
+  state.activeZoomVerseId = id;
   elements.previewModalImg.src = card.imageUrl;
-  elements.previewModalTitle.innerHTML = `Verse ${card.title} &bull; <span style="font-family: monospace; color: var(--accent-blue);">${card.filename}</span>`;
+  const sizeBadgeHtml = card.fileSize
+    ? ` &bull; <span style="background: rgba(16, 185, 129, 0.2); color: #10b981; font-family: ui-monospace, monospace; padding: 2px 7px; border-radius: 4px; font-weight: 700; border: 1px solid rgba(16, 185, 129, 0.4);">💾 ${formatBytes(card.fileSize)}</span>`
+    : '';
+  elements.previewModalTitle.innerHTML = `Verse ${card.title} &bull; <span style="font-family: monospace; color: var(--accent-blue);">${card.filename}</span>${sizeBadgeHtml}`;
   elements.previewModal.classList.add('active');
+};
+
+// Quick Action: Copy Image to Clipboard as PNG
+window.copyCardImageToClipboard = async function (id) {
+  const card = findCard(id);
+  if (!card || !card.imageUrl) {
+    showToast('No image available to copy for this verse yet', 'warning');
+    return;
+  }
+
+  showToast(`Copying Verse ${card.title} image...`, 'info');
+
+  try {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = () => reject(new Error('Image failed to load for clipboard copying'));
+      img.src = card.imageUrl;
+    });
+
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth || img.width || 720;
+    canvas.height = img.naturalHeight || img.height || 1280;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0);
+
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    if (!blob) throw new Error('Canvas blob export failed');
+
+    if (navigator.clipboard && navigator.clipboard.write) {
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': blob })
+      ]);
+      showToast(`🖼️ Verse ${card.title} image copied to clipboard as PNG! Ready to paste.`, 'success');
+    } else {
+      await navigator.clipboard.writeText(card.imageUrl);
+      showToast(`📋 Verse ${card.title} image data URL copied to clipboard!`, 'success');
+    }
+  } catch (err) {
+    console.error('Error copying image to clipboard:', err);
+    try {
+      await navigator.clipboard.writeText(card.imageUrl);
+      showToast(`📋 Verse ${card.title} image URL copied to clipboard!`, 'success');
+    } catch (e2) {
+      showToast(`Could not copy image: ${err.message}`, 'error');
+    }
+  }
+};
+
+// Quick Action: Copy Prompt Text to Clipboard
+window.copyCardPromptToClipboard = async function (id) {
+  const card = findCard(id);
+  if (!card) return;
+
+  const textarea = document.getElementById(`prompt-ta-${id}`);
+  const promptText = (textarea ? textarea.value : card.prompt) || '';
+
+  if (!promptText.trim()) {
+    showToast(`No prompt text available for Verse ${card.title}`, 'warning');
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(promptText.trim());
+    showToast(`📋 Verse ${card.title} prompt copied to clipboard!`, 'success');
+  } catch (err) {
+    const tempInput = document.createElement('textarea');
+    tempInput.value = promptText.trim();
+    document.body.appendChild(tempInput);
+    tempInput.select();
+    document.execCommand('copy');
+    document.body.removeChild(tempInput);
+    showToast(`📋 Verse ${card.title} prompt copied to clipboard!`, 'success');
+  }
 };
 
 function updateCardPromptInDom(id, newPrompt) {
@@ -1439,6 +1818,9 @@ async function handlePastedImageForGitaVerse(id, fileOrBlob, sourceLabel = 'past
 
     // 3. Update card state
     card.imageUrl = formatted916DataUrl;
+    if (formatted916DataUrl && formatted916DataUrl.startsWith('data:')) {
+      card.fileSize = Math.round((formatted916DataUrl.length - formatted916DataUrl.indexOf(',') - 1) * 0.75);
+    }
     card.status = 'approved';
     card.isSaved = true;
     state.approvedVerses.add(id);
@@ -1465,7 +1847,7 @@ async function handlePastedImageForGitaVerse(id, fileOrBlob, sourceLabel = 'past
 }
 
 // Paste Image from Clipboard trigger button
-window.pasteImageForGitaVerse = async function(id) {
+window.pasteImageForGitaVerse = async function (id) {
   setActiveCard(id);
   const card = findCard(id);
   if (!card) return;
@@ -1491,7 +1873,7 @@ window.pasteImageForGitaVerse = async function(id) {
 };
 
 // File browse trigger
-window.browseFileForGitaVerse = function(id) {
+window.browseFileForGitaVerse = function (id) {
   setActiveCard(id);
   if (elements.gitaCardFileInput) {
     elements.gitaCardFileInput.value = '';
@@ -1522,9 +1904,9 @@ function renderReviewGrid() {
   // 2. Filter by search query
   if (state.searchQuery && state.searchQuery.trim()) {
     const q = state.searchQuery.trim().toLowerCase();
-    list = list.filter(c => 
-      c.title.includes(q) || 
-      c.filename.toLowerCase().includes(q) || 
+    list = list.filter(c =>
+      c.title.includes(q) ||
+      c.filename.toLowerCase().includes(q) ||
       (c.english && c.english.toLowerCase().includes(q)) ||
       (c.sanskrit && c.sanskrit.toLowerCase().includes(q)) ||
       (c.prompt && c.prompt.toLowerCase().includes(q))
@@ -1626,10 +2008,13 @@ function createCardElement(card) {
       <span class="aspect-badge">9:16 Portrait</span>
       ${hasImage ? `
         <img src="${card.imageUrl}" alt="Verse ${card.title}" loading="lazy" />
+        ${card.fileSize ? `<span class="size-badge" title="Compressed file size: ${formatBytes(card.fileSize)}">💾 ${formatBytes(card.fileSize)}</span>` : ''}
         <div class="overlay-actions-top">
           <button class="overlay-icon-btn" onclick="event.stopPropagation(); openZoomModal('${card.id}')" title="Zoom Fullscreen">🔍</button>
+          <button class="overlay-icon-btn" onclick="event.stopPropagation(); copyCardImageToClipboard('${card.id}')" title="Copy Image to Clipboard (PNG)">📋</button>
           <button class="overlay-icon-btn" onclick="event.stopPropagation(); pasteImageForGitaVerse('${card.id}')" title="Paste Image from Clipboard (Cmd+V)">📥</button>
           <button class="overlay-icon-btn" onclick="event.stopPropagation(); renameCardImage('${card.id}')" title="Rename Filename">🏷️</button>
+          <button class="overlay-icon-btn overlay-icon-danger" onclick="event.stopPropagation(); removeCardImage('${card.id}')" title="Delete Image from Disk">🗑️</button>
         </div>
       ` : card.status === 'generating' ? `
         <div class="image-placeholder-box">
@@ -1670,7 +2055,10 @@ function createCardElement(card) {
       <div class="prompt-modify-header">
         <span>🎨 Line Art Prompt</span>
         <div style="display: flex; gap: 6px;">
-          <button class="btn btn-outline btn-sm" style="padding: 2px 6px; font-size: 10px;" onclick="event.stopPropagation(); reSynthesizePromptForCard('${card.id}')" title="Ask Gemini for a fresh visual metaphor">
+          <button class="btn btn-outline btn-sm" style="padding: 2px 8px; font-size: 10px;" onclick="event.stopPropagation(); copyCardPromptToClipboard('${card.id}')" title="Copy prompt text to clipboard">
+            📋 Copy Prompt
+          </button>
+          <button class="btn btn-outline btn-sm" style="padding: 2px 8px; font-size: 10px;" onclick="event.stopPropagation(); reSynthesizePromptForCard('${card.id}')" title="Ask Gemini for a fresh visual metaphor">
             🔄 Re-Synthesize
           </button>
         </div>
@@ -1685,12 +2073,24 @@ function createCardElement(card) {
           <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); regenerateCardImage('${card.id}')" title="Regenerate this verse on demand">
             🔄 Regenerate
           </button>
+          <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); copyCardImageToClipboard('${card.id}')" title="Copy image to clipboard as PNG">
+            🖼️ Copy Img
+          </button>
+          <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); copyCardPromptToClipboard('${card.id}')" title="Copy prompt text">
+            📋 Copy Prompt
+          </button>
           <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); pasteImageForGitaVerse('${card.id}')" title="Paste replacement image (Cmd+V)">
             📥 Paste
+          </button>
+          <button class="btn btn-outline btn-danger-outline btn-sm" onclick="event.stopPropagation(); removeCardImage('${card.id}')" title="Delete image from disk (requires confirmation)">
+            🗑️ Remove
           </button>
         ` : `
           <button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); generateSingleVerseOnDemand('${card.id}')" title="Generate this verse now on demand">
             ⚡ Generate Now
+          </button>
+          <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); copyCardPromptToClipboard('${card.id}')" title="Copy prompt text">
+            📋 Copy Prompt
           </button>
           <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); pasteImageForGitaVerse('${card.id}')" title="Paste image from clipboard (Cmd+V)">
             📥 Paste
@@ -1722,7 +2122,7 @@ function createCardElement(card) {
 }
 
 // On-demand generation for any individual verse card
-window.generateSingleVerseOnDemand = async function(id) {
+window.generateSingleVerseOnDemand = async function (id) {
   const card = findCard(id);
   if (!card) return;
 
@@ -1735,9 +2135,10 @@ window.generateSingleVerseOnDemand = async function(id) {
   renderSingleCard(id);
 
   try {
-    // 1. Synthesize Prompt if empty
-    if (!card.prompt) {
+    // 1. Synthesize Prompt if empty or default
+    if (!card.prompt || (state.autoSynthesize && state.apiKey && card.promptIsDefault)) {
       card.prompt = await synthesizeLineArtPrompt(card);
+      card.promptIsDefault = false;
       updateCardPromptInDom(id, card.prompt);
     }
 
@@ -1745,17 +2146,25 @@ window.generateSingleVerseOnDemand = async function(id) {
     showToast(`Generating 9:16 Line Art for Verse ${card.title}...`, 'info');
     const dataUrl = await generate916Image(card.prompt);
     card.imageUrl = dataUrl;
+    if (dataUrl && dataUrl.startsWith('data:')) {
+      card.fileSize = Math.round((dataUrl.length - dataUrl.indexOf(',') - 1) * 0.75);
+    }
     card.status = 'pending_review';
 
     // 3. Auto-save if local server connected
     if (state.serverConnected) {
       await saveCardImageToDisk(id, false);
       card.status = 'saved';
-      state.diskFiles.add(card.filename.toLowerCase());
+      const lowerName = card.filename.toLowerCase();
+      state.diskFiles.add(lowerName);
+      if (card.fileSize) {
+        state.diskFileSizes = state.diskFileSizes || new Map();
+        state.diskFileSizes.set(lowerName, card.fileSize);
+      }
       state.approvedVerses.add(id);
-      showToast(`✅ Generated & saved Verse ${card.title} to disk!`, 'success');
+      showToast(`✅ Generated & saved Verse ${card.title} (${formatBytes(card.fileSize)}) to disk!`, 'success');
     } else {
-      showToast(`✅ Generated Verse ${card.title}! Click Save to download.`, 'success');
+      showToast(`✅ Generated Verse ${card.title} (${formatBytes(card.fileSize)})! Click Save to download.`, 'success');
     }
   } catch (err) {
     console.error(`Error generating ${card.title}:`, err);
@@ -1784,9 +2193,11 @@ function renderChapterMap() {
     const isSaved = state.diskFiles.has(filename.toLowerCase());
     const isApproved = state.approvedVerses.has(id);
     const isInCurrentBatch = state.currentBatch.some(c => c.verse === v);
+    const card = findCard(id);
+    const sizeStr = card && card.fileSize ? ` • ${formatBytes(card.fileSize)}` : '';
 
     const chip = document.createElement('div');
-    chip.style.cssText = 'width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; border-radius: 4px; cursor: pointer; transition: all 0.2s ease;';
+    chip.style.cssText = 'width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; border-radius: 6px; cursor: pointer; transition: all 0.2s ease; user-select: none;';
 
     if (isSaved || isApproved) {
       chip.style.background = 'rgba(16, 185, 129, 0.2)';
@@ -1800,21 +2211,40 @@ function renderChapterMap() {
       inReviewCount++;
     } else {
       chip.style.background = 'rgba(255, 255, 255, 0.05)';
-      chip.style.color = '#64748b';
-      chip.style.border = '1px solid rgba(255, 255, 255, 0.08)';
+      chip.style.color = '#94a3b8';
+      chip.style.border = '1px solid rgba(255, 255, 255, 0.1)';
     }
 
     chip.textContent = v;
-    chip.title = `Verse ${state.chapter}.${v} (${isSaved ? 'Saved on disk' : isInCurrentBatch ? 'In current review' : 'Pending'}) — Click to select for 1-by-1 generation`;
+    chip.title = `Verse ${state.chapter}.${v} (${isSaved ? 'Saved on disk' + sizeStr : isInCurrentBatch ? 'In current batch' : 'Not generated'}) — Click to jump to card`;
+
+    chip.onmouseenter = () => {
+      chip.style.transform = 'translateY(-2px) scale(1.08)';
+      chip.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.4)';
+    };
+    chip.onmouseleave = () => {
+      chip.style.transform = '';
+      chip.style.boxShadow = '';
+    };
 
     chip.addEventListener('click', () => {
-      // Scroll to card in grid if present
+      // Ensure the card is visible if filter hid it
+      const currentEl = document.getElementById(`card-${id}`);
+      if (!currentEl || currentEl.style.display === 'none') {
+        state.activeFilter = 'all';
+        document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+        if (elements.filterAllCardsBtn) elements.filterAllCardsBtn.classList.add('active');
+        renderReviewGrid();
+      }
+
+      // Scroll to card in grid and trigger highlight animation
       const targetCardEl = document.getElementById(`card-${id}`);
       if (targetCardEl) {
         targetCardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
         targetCardEl.classList.remove('card-highlight-pulse');
         void targetCardEl.offsetWidth; // Trigger reflow
         targetCardEl.classList.add('card-highlight-pulse');
+        setActiveCard(id);
       }
 
       if (!state.isGenerating) {
@@ -2007,6 +2437,14 @@ function initEventListeners() {
   // Human Review Banner Actions
   elements.approveAllAndContinueBtn.addEventListener('click', approveAllAndContinue);
 
+  if (elements.regenerateRoundBtn) {
+    elements.regenerateRoundBtn.addEventListener('click', regenerateCurrentRound);
+  }
+
+  if (elements.discardRoundBtn) {
+    elements.discardRoundBtn.addEventListener('click', discardCurrentRound);
+  }
+
   elements.saveAllApprovedBtn.addEventListener('click', async () => {
     for (const card of state.currentBatch) {
       if (card.imageUrl && card.status !== 'saved') {
@@ -2015,6 +2453,50 @@ function initEventListeners() {
     }
     showToast('Saved all current round images to disk!', 'success');
   });
+
+  // Target Folder Dropdown Change (Quick Folder Switch & Persistent Preference)
+  if (elements.targetFolderSelect) {
+    elements.targetFolderSelect.addEventListener('change', (e) => {
+      const val = e.target.value;
+      if (val === '__new__') {
+        const custom = prompt('Enter new destination folder name in assets/content/images/ (e.g. shrimad-bhagwad-gita-art):', state.targetFolder);
+        if (custom && custom.trim()) {
+          setTargetFolder(custom.trim());
+        } else {
+          elements.targetFolderSelect.value = state.targetFolder;
+        }
+      } else {
+        setTargetFolder(val);
+      }
+    });
+  }
+
+  // Edit Custom Folder Button
+  if (elements.editFolderCustomBtn) {
+    elements.editFolderCustomBtn.addEventListener('click', () => {
+      const custom = prompt('Enter target folder name in assets/content/images/:', state.targetFolder);
+      if (custom && custom.trim()) {
+        setTargetFolder(custom.trim());
+      }
+    });
+  }
+
+  // Zoom Modal Quick Copy & Delete Image Buttons
+  if (elements.modalCopyImageBtn) {
+    elements.modalCopyImageBtn.addEventListener('click', () => {
+      if (state.activeZoomVerseId) {
+        copyCardImageToClipboard(state.activeZoomVerseId);
+      }
+    });
+  }
+
+  if (elements.modalDeleteImageBtn) {
+    elements.modalDeleteImageBtn.addEventListener('click', () => {
+      if (state.activeZoomVerseId) {
+        removeCardImage(state.activeZoomVerseId);
+      }
+    });
+  }
 
   // Preview Modal Close
   elements.closePreviewModalBtn.addEventListener('click', () => {
@@ -2123,6 +2605,24 @@ function initEventListeners() {
 // ============================================================================
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // Sync folder UI elements with user preference immediately
+  if (elements.targetFolderLabel) {
+    elements.targetFolderLabel.textContent = `assets/content/images/${state.targetFolder}/`;
+  }
+  if (elements.targetFolderSelect) {
+    let opt = Array.from(elements.targetFolderSelect.options).find(o => o.value === state.targetFolder);
+    if (!opt) {
+      opt = document.createElement('option');
+      opt.value = state.targetFolder;
+      opt.textContent = `📁 ${state.targetFolder}`;
+      elements.targetFolderSelect.insertBefore(opt, elements.targetFolderSelect.firstChild);
+    }
+    elements.targetFolderSelect.value = state.targetFolder;
+  }
+  if (elements.targetSubfolderInput) {
+    elements.targetSubfolderInput.value = state.targetFolder;
+  }
+
   initEventListeners();
   updateKeyBadgeUI();
 
