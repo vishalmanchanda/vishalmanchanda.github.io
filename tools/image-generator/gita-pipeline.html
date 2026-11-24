@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gita 9:16 Line Art Studio & Pipeline — Human-in-the-Loop</title>
+  <link rel="stylesheet" href="gita-pipeline.css" />
+  <script src="https://js.puter.com/v2/"></script>
+</head>
+<body>
+
+  <!-- Top Navigation Header -->
+  <header class="pipeline-header">
+    <div class="header-brand">
+      <span class="brand-icon">🕉️</span>
+      <div class="brand-titles">
+        <h1>Gita 9:16 Line Art Studio <span>• Human-in-the-Loop</span></h1>
+        <p>Faceless Minimalist Vector Line Art Pipeline for Bhagavad Gita Shlokas</p>
+      </div>
+    </div>
+
+    <div class="header-controls">
+      <!-- Server Connection Badge -->
+      <div id="serverBadge" class="status-pill disconnected">
+        <span class="dot">●</span>
+        <span id="serverStatusText">Checking Local Server...</span>
+      </div>
+
+      <!-- Gemini Key Badge -->
+      <div id="geminiKeyBadge" class="status-pill key-missing" role="button" title="Click to configure Gemini API Key" style="cursor: pointer;">
+        <span>🔮</span>
+        <span id="geminiKeyBadgeText">Gemini Key Required</span>
+      </div>
+
+      <!-- Settings Button -->
+      <button class="btn btn-secondary btn-sm" id="openSettingsBtn" title="Pipeline & API Settings">
+        <span>⚙️</span> Settings
+      </button>
+
+      <!-- Link back to General Scripture Studio -->
+      <a href="index.html" class="btn btn-outline btn-sm" title="Back to General Scripture Image Studio">
+        <span>🔙</span> General Studio
+      </a>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <main class="pipeline-container">
+
+    <!-- 1. Configuration & Pipeline Trigger Bar -->
+    <section class="panel-card">
+      <div class="panel-header">
+        <h2><span>⚙️</span> Pipeline Setup & Batch Control</h2>
+        <div style="font-size: 12px; color: var(--text-secondary);">
+          Target: <code id="targetFolderLabel" style="color: var(--accent-blue); font-family: monospace;">assets/content/images/shrimad-bhagwad-gita/</code>
+        </div>
+      </div>
+
+      <div class="pipeline-config-grid">
+        <!-- Chapter Selection -->
+        <div class="form-group">
+          <label class="form-label">1. Select Chapter</label>
+          <select id="chapterSelect" class="form-select">
+            <option value="1">Chapter 1: Arjuna Vishada Yoga (47 verses)</option>
+            <option value="2" selected>Chapter 2: Sankhya Yoga (72 verses)</option>
+            <option value="3">Chapter 3: Karma Yoga (43 verses)</option>
+            <option value="4">Chapter 4: Jnana Karma Sannyasa Yoga (42 verses)</option>
+            <option value="5">Chapter 5: Karma Sannyasa Yoga (29 verses)</option>
+            <option value="6">Chapter 6: Dhyana Yoga (47 verses)</option>
+            <option value="7">Chapter 7: Jnana Vijnana Yoga (30 verses)</option>
+            <option value="8">Chapter 8: Akshara Brahma Yoga (28 verses)</option>
+            <option value="9">Chapter 9: Raja Vidya Yoga (34 verses)</option>
+            <option value="10">Chapter 10: Vibhuti Yoga (42 verses)</option>
+            <option value="11">Chapter 11: Vishwaroopa Darshana Yoga (55 verses)</option>
+            <option value="12">Chapter 12: Bhakti Yoga (20 verses)</option>
+            <option value="13">Chapter 13: Kshetra Kshetrajna Yoga (34 verses)</option>
+            <option value="14">Chapter 14: Gunatraya Vibhaga Yoga (27 verses)</option>
+            <option value="15">Chapter 15: Purushottama Yoga (20 verses)</option>
+            <option value="16">Chapter 16: Daivasura Sampad Yoga (24 verses)</option>
+            <option value="17">Chapter 17: Shraddhatraya Vibhaga Yoga (28 verses)</option>
+            <option value="18">Chapter 18: Moksha Sannyasa Yoga (78 verses)</option>
+          </select>
+
+          <!-- Quick Range Presets -->
+          <div class="quick-chips-row">
+            <button type="button" class="chip-btn active" data-preset="all">Full Chapter</button>
+            <button type="button" class="chip-btn" data-preset="single">Single Verse</button>
+            <button type="button" class="chip-btn" data-preset="first-5">First 5</button>
+            <button type="button" class="chip-btn" data-preset="first-10">First 10</button>
+            <button type="button" class="chip-btn" data-preset="famous">Key Verses</button>
+          </div>
+        </div>
+
+        <!-- Verse Range Selector -->
+        <div class="form-group">
+          <label class="form-label">2. Verse Range</label>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <span style="font-size: 12px; color: var(--text-muted);">From</span>
+            <input type="number" id="startVerseInput" class="form-control" style="width: 80px;" min="1" max="78" value="1" />
+            <span style="font-size: 12px; color: var(--text-muted);">To</span>
+            <input type="number" id="endVerseInput" class="form-control" style="width: 80px;" min="1" max="78" value="72" />
+          </div>
+
+          <div style="display: flex; gap: 14px; margin-top: 10px;">
+            <label style="font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; cursor: pointer;">
+              <input type="checkbox" id="skipExistingCheckbox" checked />
+              Skip verses already on disk
+            </label>
+            <label style="font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; cursor: pointer;">
+              <input type="checkbox" id="autoSynthesizeCheckbox" checked />
+              Auto-prompt via Gemini
+            </label>
+          </div>
+        </div>
+
+        <!-- Batch Size & Human Check Controller -->
+        <div class="form-group">
+          <label class="form-label">3. Generations per Human Check Round</label>
+          <div class="batch-size-selector">
+            <div class="batch-size-pill" data-size="1">1 (One at a time)</div>
+            <div class="batch-size-pill" data-size="3">3 Verses</div>
+            <div class="batch-size-pill active" data-size="5">5 Verses</div>
+            <div class="batch-size-pill" data-size="10">10 Verses</div>
+            <div class="batch-size-pill" data-size="custom">Custom</div>
+          </div>
+          <span style="font-size: 11px; color: var(--accent-gold); margin-top: 4px;">
+            🛑 Pipeline automatically pauses after every <strong id="batchSizeLabel">5</strong> generation(s) for your manual review, prompt modification & approval.
+          </span>
+        </div>
+      </div>
+
+      <!-- Action Bar -->
+      <div class="pipeline-action-bar">
+        <div class="action-bar-left">
+          <button class="btn btn-primary" id="generateMissingBtn" title="Generate all blank / missing verses for this chapter">
+            <span>⚡</span> Generate Missing (<span id="missingVersesCount">0</span>)
+          </button>
+          <button class="btn btn-secondary" id="startPipelineBtn">
+            <span>🚀</span> Start Batch (<span id="batchRangeLabel">Verses 1 to 5</span>)
+          </button>
+          <button class="btn btn-secondary" id="pausePipelineBtn" style="display: none;">
+            <span>⏸️</span> Pause Pipeline
+          </button>
+          <button class="btn btn-outline" id="dryRunPipelineBtn" title="Synthesize prompts for the batch without consuming image generation credits">
+            <span>⚡</span> Dry Run (Prompts Only)
+          </button>
+
+          <div class="round-status-display">
+            <span class="round-status-title" id="pipelineStatusTitle">Ready to start</span>
+            <span class="round-status-sub" id="pipelineStatusSub">Chapter 2 • 72 verses total • Batch size: 5</span>
+          </div>
+        </div>
+
+        <div class="action-bar-right">
+          <button class="btn btn-outline btn-sm" id="resetPipelineBtn" title="Reset pipeline state to Verse 1">
+            <span>🔄</span> Reset
+          </button>
+        </div>
+      </div>
+
+      <!-- Animated Progress Tracker -->
+      <div class="round-progress-wrapper" id="progressWrapper">
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill" id="progressBarFill"></div>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-secondary);">
+          <span id="progressText">Generating Verse 2.1 (1 of 5)...</span>
+          <span id="progressPercent">20%</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Human Review & Approval Alert Banner -->
+    <section class="human-review-banner" id="humanReviewBanner">
+      <div class="review-banner-text">
+        <span class="review-banner-icon">🛑</span>
+        <div>
+          <h3 id="reviewBannerTitle">Round 1 Complete (5 Verses) — Human Review & Approval Required</h3>
+          <p id="reviewBannerSub">Inspect each generated 9:16 line art below. Modify prompts, regenerate single verses, or approve to continue to Round 2.</p>
+        </div>
+      </div>
+
+      <div class="review-banner-actions">
+        <button class="btn btn-success" id="approveAllAndContinueBtn">
+          <span>✅</span> Approve All & Next Round
+        </button>
+        <button class="btn btn-secondary btn-sm" id="saveAllApprovedBtn">
+          <span>💾</span> Save Approved to Disk
+        </button>
+      </div>
+    </section>
+
+    <!-- 3. Chapter Verses Workspace Grid (9:16 Cards) -->
+    <section>
+      <div class="workspace-controls-bar">
+        <div class="workspace-title-group">
+          <h2><span>🎨</span> <span id="chapterTitleDisplay">Chapter 2: Sankhya Yoga</span> (<span id="totalVersesDisplay">72</span> Verses)</h2>
+          <span class="workspace-badge" id="chapterSummaryBadge">Loading chapter images...</span>
+        </div>
+        <div class="workspace-filters-group">
+          <div class="filter-pills-row">
+            <button class="filter-pill active" data-filter="all" id="filterAllCardsBtn">All (<span id="countAll">0</span>)</button>
+            <button class="filter-pill" data-filter="saved" id="filterSavedCardsBtn">💾 Saved on Disk (<span id="countSaved">0</span>)</button>
+            <button class="filter-pill" data-filter="blank" id="filterBlankCardsBtn">⚪ Not Generated (<span id="countBlank">0</span>)</button>
+            <button class="filter-pill" data-filter="review" id="filterReviewCardsBtn">⚡ Under Review (<span id="countReview">0</span>)</button>
+          </div>
+          <div class="search-box-wrapper">
+            <input type="text" id="verseSearchInput" placeholder="🔍 Search verse # or keywords..." />
+          </div>
+        </div>
+      </div>
+
+      <div class="review-grid" id="reviewGrid">
+        <!-- Dynamically populated with all chapter cards (saved images + blank placeholders) -->
+      </div>
+      <!-- Hidden file input for direct file upload/paste -->
+      <input type="file" id="gitaCardFileInput" accept="image/*" style="display: none;" />
+    </section>
+
+    <!-- 4. Chapter Verses Progress Overview Map -->
+    <section class="panel-card" style="margin-top: 10px;">
+      <div class="panel-header">
+        <h2><span>🗺️</span> Chapter Verses Progress Map</h2>
+        <div style="font-size: 12px; color: var(--text-secondary);">
+          <span id="mapStatsText">0 approved • 0 in review • 72 remaining</span>
+        </div>
+      </div>
+
+      <div id="chapterProgressMap" style="display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0;">
+        <!-- Dynamically populated verse mini chips (1 to 72) -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Settings Modal (Gemini API Key, Model, Target Folder) -->
+  <div class="modal-backdrop" id="settingsModal">
+    <div class="modal-window">
+      <div class="modal-header">
+        <h3><span>⚙️</span> Studio Pipeline Settings</h3>
+        <button class="modal-close" id="closeSettingsModalBtn">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Gemini Key Input -->
+        <div class="form-group">
+          <label class="form-label" style="display: flex; justify-content: space-between;">
+            <span>Google Gemini API Key</span>
+            <span id="keyValidationStatus" style="font-size: 11px; text-transform: none;"></span>
+          </label>
+          <div style="display: flex; gap: 8px;">
+            <input type="password" id="geminiApiKeyInput" class="form-control" placeholder="AIzaSy..." autocomplete="off" />
+            <button type="button" class="btn btn-secondary btn-sm" id="toggleKeyVisibilityBtn" title="Show/Hide Key">👁️</button>
+            <button type="button" class="btn btn-primary btn-sm" id="testKeyConnectionBtn">Test</button>
+          </div>
+          <span style="font-size: 11px; color: var(--text-muted);">
+            Powers both <strong>Gemini 3.1 Flash-Lite</strong> (situation-specific art director) and <strong>Gemini 3.1 Flash-Image</strong> (9:16 vertical image generation). Stored safely in your browser localStorage.
+          </span>
+        </div>
+
+        <!-- Models -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="form-group">
+            <label class="form-label">AI Text Art Director</label>
+            <select id="textModelSelect" class="form-select">
+              <option value="gemini-3.1-flash-lite" selected>⚡ Gemini 3.1 Flash-Lite (Fast, Low Cost & Creative Director)</option>
+              <option value="gemini-2.0-flash">🔮 Gemini 2.0 Flash</option>
+              <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+              <option value="gemini-1.5-pro">Gemini 1.5 Pro (Deep Vedic Analysis)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Image Generation Engine</label>
+            <select id="imageModelSelect" class="form-select">
+              <option value="gemini-3.1-flash-image" selected>🖼️ Gemini 3.1 Flash-Image (Nano Banana 2 • 9:16 Native)</option>
+              <option value="gemini-2.0-flash">🔮 Gemini 2.0 Flash</option>
+              <option value="puter">🚀 Puter.js AI (100% Free • No Key • Zero Cost)</option>
+              <option value="pollinations">🌸 Pollinations AI (100% Free • Direct 9:16)</option>
+              <option value="imagen-3.0-generate-002">🎨 Google Imagen 3 (Vertex Tier Only)</option>
+            </select>
+            <span style="font-size: 11px; color: var(--accent-gold); display: block; margin-top: 4px;">
+              ⚡ Uses Gemini 3.1 Flash models with automatic fallback to Puter AI if image access is unavailable on your key.
+            </span>
+          </div>
+        </div>
+
+        <!-- Target Destination Subfolder -->
+        <div class="form-group">
+          <label class="form-label">Destination Repository Subfolder</label>
+          <input type="text" id="targetSubfolderInput" class="form-control" value="shrimad-bhagwad-gita" />
+          <span style="font-size: 11px; color: var(--text-muted);">
+            Images save directly into: <code>assets/content/images/&lt;subfolder&gt;/&lt;chapter&gt;-&lt;verse&gt;.jpg</code>
+          </span>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancelSettingsBtn">Cancel</button>
+        <button class="btn btn-primary" id="saveSettingsBtn">💾 Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Zoom Preview Modal (Full-Size 9:16 View) -->
+  <div class="modal-backdrop" id="previewModal">
+    <div style="display: flex; flex-direction: column; align-items: center; max-width: 90vw;">
+      <div style="display: flex; justify-content: space-between; width: 100%; padding: 8px 12px; color: #fff;">
+        <span id="previewModalTitle" style="font-weight: 700; color: var(--accent-gold);"></span>
+        <button class="modal-close" id="closePreviewModalBtn" style="color: #fff;">&times;</button>
+      </div>
+      <img id="previewModalImg" class="preview-916-img" src="" alt="Full 9:16 Preview" />
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- App Script -->
+  <script src="gita-pipeline.js"></script>
+</body>
+</html>

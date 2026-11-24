@@ -74,6 +74,7 @@ Then open your browser at:
 ### 3. Smart Vedic Prompt Synthesis
 - Automatically analyzes the Sanskrit shloka, Hindi meaning, and commentary to synthesize vivid visual prompts (e.g., *Sage Uddalaka at the holy Vishvajit fire altar, boy Nachiketa contemplating sacred cows, chariot of the body and mind*).
 - Multiple authentic art styles to choose from:
+  - **Minimalist Black & White Vector Line Art (9:16)** (Continuous contour line drawing, beautifully drawn Lord Krishna with peacock crown & warrior Arjuna, pure white background, coloring-book vector aesthetic)
   - **Raja Ravi Varma Oil Painting** (Vedic realism, rich oil canvas)
   - **Divine Golden Radiance** (Ethereal glow, sacred aura)
   - **Cinematic Vedic Realism (3D)**
@@ -142,15 +143,79 @@ Then open your browser at:
 - **📦 Download as ZIP**: Exports a complete `.zip` archive structured with the target folder path.
 - **🔑 GitHub API PAT Upload**: Allows direct remote commit to GitHub's `master` branch via personal access token.
 
+### 8. Dedicated Gita 9:16 Line Art Pipeline with Human-in-the-Loop (`gita-pipeline.html`)
+A dedicated interactive web studio and pipeline for batch generating exquisite minimalist black & white vector line art of Lord Krishna and Arjuna (9:16) for all 700+ shlokas of the Bhagavad Gita:
+👉 **[http://localhost:8085/tools/image-generator/gita-pipeline.html](http://localhost:8085/tools/image-generator/gita-pipeline.html)**
+
+- **Smart Visual Hierarchy & Concept-as-Hero Art Direction**:
+  - **Strictly Pure Visuals Only (Zero Text)**: Explicitly enforces that no text, words, word meanings, letters, Sanskrit transliteration, labels, subtitles, or typography appear inside the generated image artwork. All spiritual principles are conveyed purely through visual symbolism, composition, and metaphorical imagery.
+  - **Tier 1: Teaching / Philosophical Metaphor as Primary Hero (70–80% of canvas)**: For verses conveying philosophical allegories (e.g. Tortoise withdrawing limbs 2.58, boat tossed by storm 2.67, soul changing clothes 2.22, indestructible soul 2.23, lamp in windless shelter 6.19, ocean absorbing rivers 2.70, lotus untouched by water 5.10, noble hands releasing seeds 2.47, inverted cosmic tree 15.1), the metaphor is the central dominant visual subject. Lord Krishna and warrior Arjuna are creatively weaved in an elegant circular inset medallion or subtle foreground observant silhouettes so the teaching never takes a back seat.
+  - **Tier 2: Full Dramatic View of Krishna & Arjuna**: Reserved for direct emotional crisis, personal confrontation, command, prayer, or surrender (e.g. 2.1 Arjuna weeping collapsed on the chariot floor; 2.2–2.3 Krishna standing tall, pointing finger, sternly rebuking and commanding Arjuna to arise; 2.4 Arjuna pleading about Bhishma and Drona; 11.15 Arjuna trembling before Vishwaroopa; 18.66 total surrender).
+  - **Tier 3: Battlefield Scene Depiction Primary**: Battlefield panoramas when Sanjaya is narrating to Dhritarashtra (opposing armies, blowing conches with radiating sonic contour lines, chariot positioned in neutral ground).
+- **Seamless Image Pasting & External Import (Cmd+V / Drag & Drop)**:
+  - **Direct Clipboard Paste**: Generated an image in ChatGPT, Google Gemini, Midjourney, or locally? Simply copy the image to your clipboard (`Cmd+C` / `Ctrl+C`), click any verse card (or hover over it), and press **`Cmd+V` / `Ctrl+V`**!
+  - **📥 Paste Image Buttons**: Each card (both blank placeholders and existing cards) provides an **`📥 Paste Image`** / **`📥 Paste`** button for 1-click clipboard import.
+  - **Automatic 9:16 Portrait Canvas Formatting**: Any pasted or dropped image is automatically placed on an exact 9:16 vertical canvas (720×1280) on a pure white background without stretching or distorting.
+  - **Instant Auto-Save to Disk**: Upon paste, the artwork is automatically written to `assets/content/images/shrimad-bhagwad-gita/<chapter>-<verse>.jpg` and marked as approved on disk.
+  - **Drag & Drop Support**: Drag image files directly from your desktop or file manager and drop them onto any verse card.
+- **Default Full-Chapter Grid View**: When any chapter is selected, all verses are displayed immediately by default:
+  - **Saved on Disk**: Automatically displays existing images (e.g. `2-20.jpg`, `2-47.jpg`, `2-48.jpg`, etc.) with a green `💾 Saved on Disk` badge, full preview zoom, and quick redo/regenerate.
+  - **Blank Placeholders**: Ungenerated verses appear as distinct blank placeholder cards with Sanskrit shloka text, English meanings, and a prominent **`⚡ Generate 9:16 Line Art`** button.
+- **On-Demand Single Verse Generation**: Click **`⚡ Generate Now`** directly inside any individual card to generate and save that specific verse on demand without starting a batch.
+- **Batch Generation Options**:
+  - **`⚡ Generate Missing (${count})`**: 1-click batch generation that targets only ungenerated/blank verses in configured rounds.
+  - **`🚀 Start Batch`**: Runs generation for any selected verse range with human-in-the-loop review between rounds.
+- **Interactive Workspace Filters & Search**: Filter cards instantly by **`All`**, **`💾 Saved on Disk`**, **`⚪ Not Generated`**, or **`⚡ Under Review`**, or type into the search box to find verses by number or theme (e.g. `tortoise`, `boat`, `47`).
+- **Batch Size Control**: Select generation batch sizes per round (`1 (One at a time)`, `3`, `5`, `10`, or custom). Allows reviewing one verse at a time or in sets.
+- **1-Click Single Verse Selection**: Click any verse number chip in the Chapter Progress Map to scroll directly to that card and highlight it.
+- **Automated Human Check Post Every Round**: Automatically pauses after each round and presents generated 9:16 line art alongside Sanskrit verse text and English meanings for human review and approval before proceeding to the next round.
+- **Card-Level Modifications**:
+  - **Edit Prompt**: Tweak the synthesized visual prompt directly in each verse card's prompt box.
+  - **Re-synthesize with Gemini**: Re-run Gemini 1.5 Flash to generate a fresh Vedic art direction prompt.
+  - **Regenerate Image**: Re-generate only that single verse image without restarting the batch.
+  - **Rename File**: Click on the filename badge to rename (e.g. `2-47.jpg`).
+  - **Zoom Preview**: Full-screen 9:16 high-resolution preview modal.
+  - **Approve & Save**: Save approved images directly to `assets/content/images/shrimad-bhagwad-gita/<chapter>-<verse>.jpg`.
+- **Low-Cost & Zero-Cost Image Engines**:
+  - **Gemini 3.1 Flash-Image (Nano Banana 2)**: Native 9:16 multimodal image generation at lightning speed and minimal cost via Google AI Studio.
+  - **Gemini 3.1 Flash-Lite**: High-speed, cost-effective Vedic Art Director synthesizing unique verse-specific allegorical prompts (temperature 0.75, strictly avoiding generic chariot repetitions).
+  - **Puter.js AI**: 100% Free, zero-setup Stable Diffusion running directly in the browser with no API key or credit card needed.
+  - **Pollinations AI**: Free 9:16 vertical image generation.
+  - **Smart Cascade Fallback**: If a selected model is restricted, unsupported, or unavailable on your API key, the pipeline automatically falls back to Puter AI and Pollinations so generation never fails.
+- **Interactive Chapter Progress Map**: Visual 1..N verse chips color-coded by status (green = saved on disk, gold = under review, slate = pending).
+
+### 9. Python CLI Batch Generator (`generate_gita_lineart.py`)
+A dedicated command-line script to automate generation directly from the terminal:
+```bash
+# 1. Dry run test (synthesize prompts for Chapter 2 without calling image model):
+python3 tools/image-generator/generate_gita_lineart.py --chapter 2 --verse 1-3 --dry-run
+
+# 2. Generate a single verse using Google Gemini (Gemini 3.1 Flash-Image in 9:16):
+export GEMINI_API_KEY="your-key-here"
+python3 tools/image-generator/generate_gita_lineart.py --chapter 2 --verse 47 --provider gemini --text-model gemini-3.1-flash-lite --image-model gemini-3.1-flash-image
+
+# 3. Generate all verses of Chapter 2 (skips already saved images automatically):
+python3 tools/image-generator/generate_gita_lineart.py --chapter 2 --verse all --provider gemini
+
+# 4. Generate using OpenAI DALL-E 3 (1024x1792 vertical format):
+export OPENAI_API_KEY="your-key-here"
+python3 tools/image-generator/generate_gita_lineart.py --chapter 2 --verse 47 --provider openai
+```
+
 ---
 
 ## 📂 File Structure
 
 ```
 tools/image-generator/
-├── index.html                    # Responsive Web UI
-├── styles.css                    # Spiritual dark/light theme CSS
+├── index.html                    # Scripture Image Studio & GitHub Publisher
+├── gita-pipeline.html            # Gita 9:16 Line Art Studio (Human-in-the-Loop)
+├── gita-pipeline.css             # Dedicated dark & gold styling for 9:16 cards & pipeline
+├── gita-pipeline.js              # Pipeline controller, Gemini synthesis & batch state
+├── gita_verses.json              # Complete offline Bhagavad Gita 701-verse dataset
+├── styles.css                    # Studio spiritual dark/light theme CSS
 ├── app.js                        # App state, AI generators, and API handlers
+├── generate_gita_lineart.py      # Automated 9:16 Gita Line Art Batch CLI
 ├── server.py                     # Zero-dependency Python HTTP server
 ├── server.js                     # Zero-dependency Node.js HTTP server
 ├── run.sh                        # One-click shell launcher

@@ -43,6 +43,7 @@ const state = {
 
 // Preset Art Styles
 const ART_STYLES = {
+  'minimalist-lineart': 'Exquisite minimalist clean black vector line art illustration, continuous contour line drawing, pure visual artwork only, strictly no text, no words, no letters, no script, no characters, no labels, no subtitles, no typography, no captions, no quotes, no watermarks, crisp solid black ink outlines with deep spiritual and contextual nuance, pure stark solid white background, zero shading, no hatching, no halftone, no colors, no gradients, elegant artistic silhouette, coloring book vector line art style, 9:16 vertical portrait composition.',
   'vedic-oil': 'Epic classical Indian oil painting in the distinguished style of Raja Ravi Varma, divine atmosphere, rich oil canvas textures, warm dramatic lighting, intricate traditional attire, sacred spiritual emotion, masterpiece, 8k resolution, cinematic composition.',
   'divine-glow': 'Divine spiritual art, ethereal golden radiance, sacred glowing aura, celestial light rays filtering through ancient banyan trees, holy hermitage ashram, serene transcendental mood, hyper-detailed, octane render.',
   'cinematic-realism': 'Cinematic Vedic realism, highly detailed 3D rendering, realistic ancient Indian hermitage, historical Vedic period, natural warm morning sunlight, sacred Vedic fire altar (Agni Kund), photorealistic, 8k.',
@@ -1942,6 +1943,9 @@ async function generateGeminiImage(prompt) {
   const key = state.apiKeys.gemini;
   if (!key) throw new Error('Please enter your Google Gemini API Key in Settings.');
 
+  const isVertical = (state.selectedStyle === 'minimalist-lineart') || prompt.toLowerCase().includes('9:16');
+  const targetAspect = isVertical ? '9:16' : '1:1';
+
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${key}`;
   const response = await fetch(endpoint, {
     method: 'POST',
@@ -1950,7 +1954,7 @@ async function generateGeminiImage(prompt) {
       instances: [{ prompt: prompt }],
       parameters: {
         sampleCount: 1,
-        aspectRatio: '1:1',
+        aspectRatio: targetAspect,
         outputOptions: { mimeType: 'image/jpeg' }
       }
     })
@@ -1972,6 +1976,9 @@ async function generateOpenAIImage(prompt) {
   const key = state.apiKeys.openai;
   if (!key) throw new Error('Please enter your OpenAI API Key in Settings.');
 
+  const isVertical = (state.selectedStyle === 'minimalist-lineart') || prompt.toLowerCase().includes('9:16');
+  const targetSize = isVertical ? '1024x1792' : '1024x1024';
+
   const response = await fetch('https://api.openai.com/v1/images/generations', {
     method: 'POST',
     headers: {
@@ -1982,7 +1989,7 @@ async function generateOpenAIImage(prompt) {
       model: 'dall-e-3',
       prompt: prompt,
       n: 1,
-      size: '1024x1024',
+      size: targetSize,
       response_format: 'b64_json'
     })
   });
