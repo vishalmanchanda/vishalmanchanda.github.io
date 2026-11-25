@@ -1,0 +1,26 @@
+{
+  "domain": "misc",
+  "version": "1.0.0",
+  "locale": "en",
+  "repoType": "github",
+  "baseUrl": "https://raw.githubusercontent.com/vishalmanchanda/vishalmanchanda.github.io/master/misc/en",
+  "defaultCommentaryAuthor": "",
+  "packages": [
+    {
+      "id": "1",
+      "title": "Sample Book",
+      "language": "en",
+      "categoryKey": "misc",
+      "coverImage": "https://images.pexels.com/photos/27101543/pexels-photo-27101543/free-photo-of-path-among-trees-covered-with-snow.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2",
+      "defaultCommentaryAuthor": "",
+      "bundleUrl": "https://raw.githubusercontent.com/vishalmanchanda/vishalmanchanda.github.io/master/misc/en/1/bundle.zip",
+      "bundleVersion": "1.0.1",
+      "bundleChecksum": "sha256:ebfb9bb6b54282cff75eb36b4dbbad929f580aa92901451bb4e92bd3675b904e",
+      "mediaIndexTemplate": "https://raw.githubusercontent.com/vishalmanchanda/vishalmanchanda.github.io/master/misc/en/1/media/{partId}.json",
+      "mediaParts": [],
+      "mediaUpdatedAt": "2026-11-25T17:28:15.979Z",
+      "updatedAt": "2026-11-25T17:28:15.979Z"
+    }
+  ],
+  "updatedAt": "2026-11-25T17:28:15.979Z"
+}
